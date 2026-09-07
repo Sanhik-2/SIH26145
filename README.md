@@ -36,71 +36,80 @@ In high-security operational technology (OT), industrial control systems (ICS), 
 
 ---
 
-## 🔬 Mathematical Formulation & Anomaly Core
+## 🔬 Mathematical Formulation & Continuous-Time AI Core (NJ-ODE)
 
-The core of CHRONOS utilizes a **Dual-Model Semi-Supervised Baseline Manifold Learning** engine. It optimizes a **Regularized Autoencoder Objective** over unlabelled, verified benign simplex telemetry $\mathcal{D}_{\text{benign}}$ to establish a normal operational envelope:
+The threat detection engine of CHRONOS is built upon **Neural Jump Ordinary Differential Equations (NJ-ODE)** (*Herrera, Krach & Teichmann, ICLR 2021, arXiv:2006.04727*). 
 
-$$\mathcal{L}_{\text{Semi}} = \sum_{i=1}^{n} \left\| \mathbf{x}_i - g_\theta(f_\phi(\mathbf{x}_i)) \right\|_2^2 + \lambda \cdot \sum_l \|\mathbf{W}_l\|_F^2$$
+Unlike conventional discrete models that force fixed 5-minute batch aggregation windows, NJ-ODE models continuous latent trajectories with discrete stochastic jumps triggered upon packet arrival. A window of simplex network traffic is modeled as a continuous trajectory $\mathbf{h}(t) \in \mathbb{R}^{d_h}$ punctuated by stochastic observations $\mathbf{x}_i \in \mathbb{R}^{d_x}$ at irregular arrival timestamps $t_i \in [0, 1]$:
 
-$$\text{Anomaly Decision Metric: } \quad \mathcal{S}(\mathbf{x}) = \|\mathbf{x} - \hat{\mathbf{x}}\|_2^2 + \beta \cdot \text{dist}(f_\phi(\mathbf{x}), \mathbf{c}) > \tau_{\text{thresh}}$$
+$$\frac{d\mathbf{h}(t)}{dt} = f_\theta(\mathbf{h}(t), \mathbf{x}_{\text{last}}, t_{\text{last}}, t - t_{\text{last}}), \quad t \in [t_{i-1}, t_i)$$
 
-### Core Components:
-* **Encoder $f_\phi(\mathbf{x}_i)$:** Compresses high-dimensional simplex feature vectors into a lower-dimensional latent bottleneck representation $\mathbf{z}_i$.
-* **Decoder $g_\theta(\mathbf{z}_i)$:** Reconstructs the expected benign traffic manifold $\hat{\mathbf{x}}_i$.
-* **Frobenius Regularization Term ($\lambda \sum_l \|\mathbf{W}_l\|_F^2$):** Prevents overfitting to transient network noise while preserving compression fidelity.
-* **One-Class Boundary / Latent Center ($\mathbf{c}$):** Computes the Euclidean distance of latent embeddings from the benign center of gravity.
-* **Dynamic Anomaly Threshold ($\tau_{\text{thresh}}$):** Calibrated using extreme value theory (EVT). Any uncharacteristic flow (covert exfiltration burst, randomized C2 beaconing, DGA tunneling) causes reconstruction loss and latent distance to spike past $\tau_{\text{thresh}}$.
+$$\mathbf{h}(t_i) = \text{jumpNN}_\theta(\mathbf{x}_i), \quad \mathbf{y}^-(t_i) = \text{outputNN}_\theta(\mathbf{h}(t_i^-))$$
+
+### Paper-Faithful Objective Function (Herrera et al., Eq. 33):
+$$\Phi(\theta) = \frac{1}{N} \sum_{\text{paths}} \frac{1}{n_j} \sum_{i=1}^{n_j} \left( \|\mathbf{x}_i - \mathbf{y}_i\|_2 + \|\mathbf{y}_i - \mathbf{y}_i^-\|_2 \right)^2$$
+
+### Dynamic Window-Peak Anomaly Decision:
+$$\mathcal{S}_{\text{peak}} = \max_{j} \|\mathbf{x}_j - \mathbf{y}^-_j\|_2^2 > \tau_{\text{thresh}}$$
+
+Where:
+* **$\mathbf{y}^-_j = \text{outputNN}(\mathbf{h}(t_j^-))$:** Online conditional expectation of benign network behavior predicted immediately prior to observation $j$.
+* **Anomaly Metric $\mathcal{S}_{\text{peak}}$:** The peak one-step prediction error within a sliding window. Any deviation from learned benign baseline dynamics (covert exfiltration flood, randomized C2 beaconing, DNS tunneling) causes $\mathcal{S}_{\text{peak}}$ to violently spike past calibrated threshold $\tau$.
+* **Why Diode Lossiness Maps Directly to NJ-ODE:** The hardware/QR data diode is lossy and strictly simplex. Dropped QR frames $\to$ missing observations $\to$ `mask=False` slots. Rather than requiring artificial imputation, NJ-ODE's continuous latent ODE flow **natively consumes irregular and missing observations** with theoretical convergence guarantees.
 
 ---
 
-## 🏗️ Multi-Layer Technical Architecture
+## 🏗️ End-to-End System Architecture
+
+```text
+                    ┌─ INSIDE air gap ─┐        [QR diode]        ┌─ scanner side ──────────────┐
+packets ──► featurize ──► feature frames ──► ~~~ one-way ~~~ ──► QRIngest ──► Windower ──► NJ-ODE ──► τ ──► alerts
+                    └──────────────────┘   (lossy, reordering)  (dedup/CRC)   (scaler)   (frozen)   (peak)
+```
 
 ```mermaid
-graph TD
-    subgraph Layer 0: Zero-Copy Data Acquisition
-        A[Passive Optical Tap / Data Diode] -->|Raw Simplex IP Stream| B[eBPF / AF_XDP Ring Buffer]
-        B --> C[CuckooHash Flow Assembler]
+graph LR
+    subgraph Air-Gapped Network [Inside Protected Zone]
+        P[Simplex IP Traffic] --> FE[Feature Extractor]
+        FE -->|4-Feature Contract| FF[Feature Frames]
+        FF --> TX[QR Optical Diode Transmitter]
     end
 
-    subgraph Layer 1 & 2: Signal Transform & Feature Extraction
-        C --> D1[Packet Size / Time Sequence]
-        C --> D2[Inter-Arrival Timing]
-        C --> D3[DNS Query Bytes]
-        C --> D4[TLS ClientHello Raw Bytes]
+    TX -->|One-Way Simplex Channel| RX[Scanner / Camera Ingest]
 
-        D1 --> E1[Welch PSD & Wavelet Scattering]
-        D2 --> E2[Lomb-Scargle Periodogram]
-        D3 --> E3[Byte-Level 1D-CNN + Attention]
-        D4 --> E4[JA4+ Fingerprint & ECDF Embeddings]
-    end
-
-    subgraph Layer 3: Semi-Supervised Anomaly Core
-        E1 & E2 & E3 & E4 --> F[Multi-Modal Feature Fusion]
-        F --> G[Encoder Network f_phi]
-        G --> H[Latent Bottleneck z]
-        H --> I[Decoder Network g_theta]
-        I --> J[Reconstruction Error & Latent Boundary Distance]
-        J --> K[Anomaly Score Generator S_x]
-    end
-
-    subgraph Layer 4 & 5: Threat Classification & Response Engine
-        K --> L[Specialized Threat Classification Heads]
-        L -->|DDoS / C2 / DGA / Recon / Exfil| M[Confidence Calibration]
-        M --> N[CEF / STIX 2.1 Alert Schema Mapping]
-        N --> O[SOC Real-Time Dashboard & Evidence Package]
+    subgraph Defense Console [Scanner / AI Defense Side]
+        RX --> QI[QRIngest / Frame Reassembly]
+        QI --> WA[Unified Slot Aggregation aggregate_slots]
+        WA --> LF[LiveFeeder / Windower]
+        LF --> NO[Frozen NJ-ODE Engine d_h=10, hidden=50]
+        NO --> SC[Window-Peak Scoring vs tau]
+        SC --> CH[Unsupervised Channel Attribution]
+        CH --> HY[N-of-M Hysteresis Filter]
+        HY --> AL[Actionable SOC Alerts]
     end
 ```
 
-### Layer Breakdown:
-* **Layer 0: Ingestion (Zero-Copy Data Acquisition):** Direct kernel bypass using DPDK / AF_XDP ring buffers and CuckooHash flow tracking for line-rate 10–100 Gbps passive processing without OS context-switch overhead.
-* **Layer 1 & 2: Signal Transform & Spectral Feature Extraction:**
-  * **Welch PSD & Wavelet Scattering (WST):** Deformation-stable multi-scale feature extraction for volumetric burst dynamic tracking.
-  * **Lomb-Scargle Periodogram:** Spectral analysis for unevenly sampled time series to resolve randomized timing jitter ($T = T_0 \pm \delta$) in C2 beacons.
-  * **JA4+ Fingerprinting:** TLS 1.3 ClientHello multi-attribute hashing (ciphers, extensions, ALPN).
-  * **Byte-Level 1D-CNN Attention:** Captures domain query character distributions for DNS tunneling detection.
-* **Layer 3: Semi-Supervised Anomaly Learning Core:** Fuses multi-modal feature vectors and scores deviations from learned benign behavior.
-* **Layer 4: Threat Classification Engine:** Specialized multi-task heads for DDoS, Command & Control (C2), DGA, Malware, Reconnaissance, and Asymmetric Data Exfiltration.
-* **Layer 5: Alert & Response Engine:** Calibrates confidence scores, constructs STIX/CEF compliant evidence packages, and streams real-time telemetry to the SOC dashboard.
+### 🔒 Locked Design Decisions (Defensible in Q&A)
+
+| Decision | Locked Specification | Rationale & Defense |
+|---|---|---|
+| **Frozen Model in Operation** | No online learning at runtime (`eval()` mode). Retraining = deliberate ops event. | **Security Gold:** The AI engine operates on the receive side of the hardware/QR diode. Because there is **no return channel**, an attacker inside the air gap cannot poison the model baseline or warm it up. Model updates require physical access. |
+| **Retraining Cadence as Ops Parameter** | Cheap retraining (~60 s): e.g. nightly retrain on verified benign + recalibrate $\tau$. | Rebuts runtime drift concerns without compromising baseline integrity or introducing vulnerability to adversarial manipulation. |
+| **Single Multiregime Baseline** | Telemetry + web_sync trained jointly into one checkpoint. | Simpler, single $\tau$, single checkpoint. Proves multi-regime adaptability without brittle gating or complex ensembles. |
+| **Attribution via Channel Heuristic** | Unsupervised rule mapping: `bytes`/`burst` $\to$ **exfil-flood**, `entropy` $\to$ **tunnel/encrypted-c2**, `iat` $\to$ **beacon/recon**. | Retains the **pure zero-day story**. Adding supervised classification heads requires labeled attacks, destroying zero-day claims. Channel residuals provide SOC explainability honestly. |
+| **Alert Semantics: Window-Peak vs $\tau$ with Hysteresis** | Evaluates $\max_j S_j > \tau$ with $N$-of-$M$ hysteresis (e.g. 2 of 3 consecutive windows). | Peak scoring reliably detects sudden bursts and intermittent beacons; hysteresis provides anti-flicker stability across overlapping sliding strides. |
+| **Checkpoint = Full Versioned Artifact** | Checkpoint carries `version`, `features: ["iat", "bytes", "entropy", "burst"]`, and scaler buffers (`x_mean`, `x_std`). | Eliminates preprocessing drift. Any retrain is safely self-contained, and mismatched feature regimes are rejected upon load. |
+
+### 🔧 Zero Train/Serve Skew Windowing Contract
+
+To ensure mathematical consistency between offline evaluation and live streaming:
+* **One Windowing Implementation, Two Consumers:** Both `Windower` (batch training/evaluation) and `LiveFeeder` (live scanner/QR ingest) route through `aggregate_slots(...)`.
+* **Collision Policy per Slot:**
+  * `iat`: minimum inter-arrival gap
+  * `bytes`: cumulative volume (sum)
+  * `entropy`: maximum information surprise
+  * `burst`: maximum burst indicator
+* **Sliding Stride:** Batch training uses non-overlapping windows; live feeder uses a 2.0 s sliding stride for sub-second alert responsiveness.
 
 ---
 
@@ -175,23 +184,23 @@ source venv/bin/activate  # On Linux/macOS
 pip install -r requirements.txt
 ```
 
-### 3. Run Virtual Data Diode Traffic Simulator
-Simulate passive unidirectional traffic with mixed benign SCADA flows and covert attack traffic:
+### 3. Train Multi-Regime NJ-ODE Baseline
+Extract features from benign regimes (telemetry + web sync), train the continuous-time NJ-ODE, and calibrate the detection threshold $\tau$:
 ```bash
-# Terminal 1: Launch the simulated data diode tap
-python simulation/diode_tap.py --interface lo --rate 1000
+python train.py --epochs 30 --lr 0.001 --device cpu
+```
+This produces the versioned artifact `checkpoints/njode_telemetry.pt` with feature contract metadata and self-contained standardization buffers.
+
+### 4. Run Comprehensive Evaluation
+Evaluate the model against benign traffic and synthetic zero-day attack campaigns (`c2_beacon`, `exfil_burst`, `dga_tunnel`) with channel attribution:
+```bash
+python evaluate.py --checkpoint checkpoints/njode_telemetry.pt --output results/eval.json
 ```
 
-### 4. Train Semi-Supervised Baseline Model
-Extract features from benign traffic and train the regularized autoencoder:
+### 5. Run Verification Test Suite
+Execute the full pytest suite covering slot aggregation, `LiveFeeder` sliding stride, channel attribution heuristic, model calibration, and checkpoint contracts:
 ```bash
-python models/autoencoder.py --epochs 50 --batch-size 64 --lr 1e-3
-```
-
-### 5. Launch Real-Time SOC Dashboard
-Start the interactive Streamlit monitoring dashboard to inspect live anomaly metrics and threat flags:
-```bash
-streamlit run dashboard/app.py
+pytest tests/ -v
 ```
 
 ---

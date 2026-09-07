@@ -15,9 +15,12 @@ Objective (paper eq. 33, verbatim):
     Φ(θ) = (1/N) Σ_paths (1/n_j) Σ_i ( ||x_i − y_i||₂ + ||y_i − y_i⁻||₂ )²
 """
 import math
+from typing import Dict, Tuple
+import numpy as np
 import torch
 import torch.nn as nn
 
+MODEL_VERSION = "1.0"
 FEATURES = ["iat", "bytes", "entropy", "burst"]   # keep in sync with features/
 
 
@@ -155,20 +158,24 @@ class NJODE(nn.Module):
 
     @torch.no_grad()
     def calibrate(self, loader, device="cpu", quantile=0.995):
-            """τ from held-out BENIGN window-PEAK scores (alert unit = window)."""
-            self.to(device).eval()
-            chunks = []
-            for values, mask, t_grid in loader:
-                _, s = self._sweep(values.to(device), mask.to(device),
-                                   t_grid.to(device), collect_scores=True)
-                peaks = torch.nan_to_num(s, nan=float("-inf")).amax(dim=1)
-                chunks.append(peaks)
-            s = torch.cat(chunks)
-            tau_mean, tau_q = s.mean() + 3.0 * s.std(), torch.quantile(s, quantile)
-            self.threshold.copy_(torch.maximum(tau_mean, tau_q))
-            print(f"[✓] window-peak τ = {self.threshold.item():.4f}  "
-                  f"(mean+3σ={tau_mean.item():.4f}, q{quantile}={tau_q.item():.4f})")
-            return self
+        """τ from held-out BENIGN window-PEAK scores (alert unit = window)."""
+        self.to(device).eval()
+        chunks = []
+        for values, mask, t_grid in loader:
+            _, s = self._sweep(values.to(device), mask.to(device),
+                               t_grid.to(device), collect_scores=True)
+            peaks = torch.nan_to_num(s, nan=float("-inf")).amax(dim=1)
+            valid = (peaks != float("-inf")) & torch.isfinite(peaks)
+            if valid.any():
+                chunks.append(peaks[valid])
+        if not chunks:
+            raise ValueError("No valid window peaks found during calibration.")
+        s = torch.cat(chunks)
+        tau_mean, tau_q = s.mean() + 3.0 * s.std(), torch.quantile(s, quantile)
+        self.threshold.copy_(torch.maximum(tau_mean, tau_q))
+        print(f"[✓] window-peak τ = {self.threshold.item():.4f}  "
+              f"(mean+3σ={tau_mean.item():.4f}, q{quantile}={tau_q.item():.4f})")
+        return self
 
     @torch.no_grad()
     def compute_anomaly_scores(self, values, mask, t_grid, device="cpu"):
@@ -207,16 +214,71 @@ class NJODE(nn.Module):
     # ---- persistence ------------------------------------------------------
     def save(self, path):
         from pathlib import Path
-        Path(path).parent.mkdir(parents=True, exist_ok=True)   # ← NEW
-        torch.save({"state_dict": self.state_dict(),
-                    "config": {"d_x": self.d_x, "d_h": self.d_h,
-                               "hidden": self.hidden, "dropout": self.dropout,
-                               "grid_step": self.dt, "horizon": self.dt * self.K}}, path)
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        torch.save({
+            "state_dict": self.state_dict(),
+            "config": {
+                "version": MODEL_VERSION,
+                "features": list(FEATURES),
+                "d_x": self.d_x,
+                "d_h": self.d_h,
+                "hidden": self.hidden,
+                "dropout": self.dropout,
+                "grid_step": self.dt,
+                "horizon": self.dt * self.K,
+            }
+        }, path)
 
     @classmethod
     def load(cls, path, device="cpu"):
         ckpt = torch.load(path, map_location=device)
-        m = cls(**ckpt["config"]); m.load_state_dict(ckpt["state_dict"])
-        m.to(device); m._reset_stream()
+        config = ckpt.get("config", {})
+        if "version" not in config or "features" not in config:
+            import warnings
+            warnings.warn(
+                f"Legacy checkpoint '{path}' detected without version/features contract metadata. "
+                f"Retrain via `python train.py` to generate a contract-validated v{MODEL_VERSION} artifact.",
+                UserWarning,
+                stacklevel=2,
+            )
+        # Feature contract validation to prevent silent data-plane mismatch
+        ckpt_features = config.get("features")
+        if ckpt_features is not None and ckpt_features != FEATURES:
+            raise ValueError(
+                f"Feature contract mismatch: checkpoint has {ckpt_features}, model expects {FEATURES}"
+            )
+        init_kwargs = {
+            k: v for k, v in config.items()
+            if k in ["d_x", "d_h", "hidden", "dropout", "grid_step", "horizon"]
+        }
+        m = cls(**init_kwargs)
+        m.load_state_dict(ckpt["state_dict"])
+        m.to(device)
+        m._reset_stream()
         return m
+
+
+def attribute_error(x, y_minus) -> Tuple[str, str, Dict[str, float]]:
+    """Explainable channel attribution heuristic.
+
+    Decomposes prediction error across [iat, bytes, entropy, burst]
+    and maps the dominant channel to a threat category without supervised heads.
+    """
+    diff = ((x - y_minus) ** 2).detach().cpu().numpy()
+    if diff.ndim > 1:
+        diff = diff.flatten()
+    top_idx = int(np.argmax(diff))
+    name = FEATURES[top_idx]
+    mapping = {
+        "iat": "beacon/recon",
+        "bytes": "exfil-flood",
+        "entropy": "tunnel/encrypted-c2",
+        "burst": "exfil-flood",
+    }
+    threat = mapping.get(name, "unknown")
+    errs = {FEATURES[i]: float(diff[i]) for i in range(len(FEATURES))}
+    return name, threat, errs
+
+
+attribute_observation = attribute_error
 
