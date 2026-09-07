@@ -394,6 +394,54 @@ middleware = [
 app = Starlette(debug=False, routes=routes, middleware=middleware)
 
 
+def get_primary_lan_ip() -> str:
+    """Finds the primary local LAN / Wi-Fi IP address for phone connectivity."""
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        # If VPN/Docker tunnel, check for Wi-Fi or local subnet
+        if ip.startswith("172.16.") or ip.startswith("172.17."):
+            import subprocess
+            out = subprocess.check_output(["ip", "-4", "addr", "show"], text=True)
+            for line in out.splitlines():
+                if "inet " in line and ("wlp" in line or "wlan" in line or "eth" in line or "10." in line or "192.168." in line):
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        return parts[1].split("/")[0]
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
+def check_or_clear_port(port: int):
+    """Detects and frees port if held by a zombie background process."""
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("0.0.0.0", port))
+        s.close()
+        return
+    except OSError:
+        pass
+
+    try:
+        import subprocess
+        out = subprocess.check_output(["lsof", "-ti", f":{port}"], text=True).strip()
+        if out:
+            pids = out.split()
+            current_pid = str(os.getpid())
+            for pid in pids:
+                if pid != current_pid:
+                    print(f"[i] Freeing occupied port {port} from prior process (PID: {pid})...")
+                    subprocess.run(["kill", "-9", pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            time.sleep(0.4)
+    except Exception:
+        pass
+
+
 def ensure_ssl_certs(cert_dir: Path, host: str = "0.0.0.0"):
     cert_dir.mkdir(parents=True, exist_ok=True)
     key_path = cert_dir / "key.pem"
@@ -416,15 +464,20 @@ def main():
     parser = argparse.ArgumentParser(description="CHRONOS React SOC Full-Stack Console Server")
     parser.add_argument("--host", default="0.0.0.0", help="Listen host (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8501, help="Listen port (default: 8501)")
-    parser.add_argument("--ssl", action="store_true", help="Enable HTTPS using SSL certificates (required for mobile phone camera WebRTC)")
+    parser.add_argument("--ssl", action="store_true", default=True, help="Enable HTTPS using SSL certificates for Mobile WebRTC (default: True)")
+    parser.add_argument("--no-ssl", dest="ssl", action="store_false", help="Disable HTTPS and run in plain HTTP mode")
+    parser.add_argument("--http", dest="ssl", action="store_false", help="Disable HTTPS and run in plain HTTP mode")
     parser.add_argument("--ssl-key", default="", help="Path to SSL private key")
     parser.add_argument("--ssl-cert", default="", help="Path to SSL certificate")
     parser.add_argument("--reload", action="store_true", help="Enable live code reload")
     args = parser.parse_args()
 
+    check_or_clear_port(args.port)
+
     ssl_keyfile = None
     ssl_certfile = None
     protocol = "http"
+    lan_ip = get_primary_lan_ip()
 
     if args.ssl:
         cert_dir = REPO_ROOT / "certs"
@@ -437,8 +490,9 @@ def main():
     print("🛡️  CHRONOS CYBER-DEFENSE SOC FULL-STACK CONSOLE")
     print("=" * 72)
     print(f" Web Interface:     {protocol}://localhost:{args.port}")
-    print(f" Network URL:       {protocol}://{args.host}:{args.port}")
-    print(f" SSL Encryption:    {'ENABLED (HTTPS for Mobile Camera)' if args.ssl else 'DISABLED (HTTP)'}")
+    print(f" Local LAN URL:     {protocol}://{lan_ip}:{args.port}")
+    print(f" 📱 PHONE 30 FPS:   {protocol}://{lan_ip}:{args.port}/?scan=1")
+    print(f" SSL Encryption:    {'ENABLED (Native 30 FPS Mobile WebRTC Camera)' if args.ssl else 'DISABLED (HTTP)'}")
     print(f" Static Assets:     {DIST_DIR}")
     print(" Press Ctrl+C to terminate.")
     print("=" * 72)

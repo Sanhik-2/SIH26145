@@ -39,6 +39,16 @@ export default function App() {
   const [isStreaming, setIsStreaming] = useState(true);
   const [speed, setSpeed] = useState(1.0);
   const [currentScenario, setCurrentScenario] = useState('calm');
+
+  // Auto-open Phone Camera Scanner if requested via URL query param or route
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('scan') === '1' || window.location.pathname === '/scan' || params.has('scanner')) {
+        setShowPhoneScanner(true);
+      }
+    }
+  }, []);
   const [autoTour, setAutoTour] = useState(true);
   const [autoTourPhase, setAutoTourPhase] = useState({
     name: 'Phase 1/6: Calm Baseline (FPR 0.0%)',
