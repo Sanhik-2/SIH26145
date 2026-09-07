@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import HardwareDiodeTopology from './components/HardwareDiodeTopology';
+import NetworkGraphView from './components/NetworkGraphView';
 import TelemetryOscilloscope from './components/TelemetryOscilloscope';
 import ScoreGauge from './components/ScoreGauge';
 import AttributionMatrix from './components/AttributionMatrix';
@@ -25,7 +26,8 @@ import CampaignAnalytics from './components/CampaignAnalytics';
 import ArchitectureTheory from './components/ArchitectureTheory';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('live'); // 'live' | 'campaign' | 'theory'
+  const [activeTab, setActiveTab] = useState('live'); // 'live' | 'graph' | 'campaign' | 'theory'
+  const [topTopologyView, setTopTopologyView] = useState('graph'); // 'graph' | 'schematic'
   const [isStreaming, setIsStreaming] = useState(true);
   const [speed, setSpeed] = useState(1.0);
   const [currentScenario, setCurrentScenario] = useState('calm'); // 'calm' | 'exfil_burst' | 'c2_beacon' | 'dga_tunnel'
@@ -287,6 +289,17 @@ export default function App() {
               <span>Live Operations</span>
             </button>
             <button
+              onClick={() => setActiveTab('graph')}
+              className={`px-3.5 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                activeTab === 'graph'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-md shadow-cyan-500/20'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Obsidian Network Graph</span>
+            </button>
+            <button
               onClick={() => setActiveTab('campaign')}
               className={`px-3.5 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
                 activeTab === 'campaign'
@@ -330,12 +343,51 @@ export default function App() {
         {/* Tab 1: Live Operations View */}
         {activeTab === 'live' && (
           <div className="space-y-6">
-            {/* Top Interactive Hardware Optical Diode Topology */}
-            <HardwareDiodeTopology
-              isStreaming={isStreaming}
-              isAttacking={currentScenario !== 'calm'}
-              packetRate={currentScenario === 'exfil_burst' ? 66 : 12}
-            />
+            {/* View Switcher: Obsidian Graph vs Optical Hardware Diode */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono text-slate-400 font-semibold">ACTIVE TOPOLOGY VIEW:</span>
+                <div className="p-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-1 font-mono text-xs">
+                  <button
+                    onClick={() => setTopTopologyView('graph')}
+                    className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                      topTopologyView === 'graph'
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Obsidian Network Graph</span>
+                  </button>
+                  <button
+                    onClick={() => setTopTopologyView('schematic')}
+                    className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                      topTopologyView === 'schematic'
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Radio className="w-3.5 h-3.5" />
+                    <span>Optical Diode Hardware</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Render selected topology */}
+            {topTopologyView === 'graph' ? (
+              <NetworkGraphView
+                currentScenario={currentScenario}
+                score={currentScore}
+                tau={systemStatus.tau}
+              />
+            ) : (
+              <HardwareDiodeTopology
+                isStreaming={isStreaming}
+                isAttacking={currentScenario !== 'calm'}
+                packetRate={currentScenario === 'exfil_burst' ? 66 : 12}
+              />
+            )}
 
             {/* Middle Row: Oscilloscope + Score Gauge + Bayesian Attribution */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -363,6 +415,31 @@ export default function App() {
                 <AttributionMatrix attribution={attribution} />
               </div>
             </div>
+
+            {/* Scenario Trigger & Playback Bar */}
+            <ScenarioControls
+              onTriggerAttack={handleTriggerAttack}
+              currentScenario={currentScenario}
+              isStreaming={isStreaming}
+              onToggleStreaming={() => setIsStreaming(!isStreaming)}
+              onResetStream={handleResetStream}
+              speed={speed}
+              onChangeSpeed={setSpeed}
+            />
+
+            {/* Live Streaming Alert Events Table */}
+            <AlertStreamTable alerts={alerts} />
+          </div>
+        )}
+
+        {/* Tab: Dedicated Full-Screen Obsidian Network Graph */}
+        {activeTab === 'graph' && (
+          <div className="space-y-6">
+            <NetworkGraphView
+              currentScenario={currentScenario}
+              score={currentScore}
+              tau={systemStatus.tau}
+            />
 
             {/* Scenario Trigger & Playback Bar */}
             <ScenarioControls
