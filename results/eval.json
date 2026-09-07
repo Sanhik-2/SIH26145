@@ -1,0 +1,27 @@
+{
+  "threshold": 2.8103771209716797,
+  "benign_fpr": 0.0,
+  "benign_peak_mean": 0.9594142436981201,
+  "benign_peak_p99": 2.053866386413574,
+  "c2_beacon": {
+    "detection_rate": 1.0,
+    "flagged_obs_rate": 0.5362035225048923,
+    "mean_peak_score": 25.020654940605162,
+    "attribution_accuracy": 0.9,
+    "expected_attribution": "tunnel/encrypted-c2/beacon/recon"
+  },
+  "exfil_burst": {
+    "detection_rate": 1.0,
+    "flagged_obs_rate": 1.0,
+    "mean_peak_score": 890.6382049560547,
+    "attribution_accuracy": 1.0,
+    "expected_attribution": "exfil-flood"
+  },
+  "dga_tunnel": {
+    "detection_rate": 1.0,
+    "flagged_obs_rate": 1.0,
+    "mean_peak_score": 72.58761229515076,
+    "attribution_accuracy": 0.95,
+    "expected_attribution": "tunnel/encrypted-c2"
+  }
+}
