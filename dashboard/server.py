@@ -49,12 +49,17 @@ CAMPAIGN_PATH = REPO_ROOT / "results" / "campaign.json"
 EVAL_PATH = REPO_ROOT / "results" / "eval.json"
 
 
+BENCHMARK_PATH = REPO_ROOT / "results" / "benchmark.json"
+
+
 def load_checkpoint_info() -> Dict[str, Any]:
     info = {
-        "version": "1.0",
+        "version": "1.1",
         "tau": 2.810,
         "checkpoint": str(CHECKPOINT_PATH.relative_to(REPO_ROOT)) if CHECKPOINT_PATH.exists() else "none",
-        "modelName": "NJ-ODE Continuous Simplex Guard",
+        "modelName": "NJ-ODE Continuous Simplex Guard (Protocol v1.1)",
+        "features": ["iat", "bytes", "entropy", "burst", "direction"],
+        "d_x": 5,
         "device": "cpu",
         "diodeStatus": "PHYSICAL_OPTICAL_AIRGAP",
         "ingestionLatencyMs": 1.1,
@@ -64,8 +69,13 @@ def load_checkpoint_info() -> Dict[str, Any]:
             import torch
             ckpt = torch.load(CHECKPOINT_PATH, map_location="cpu")
             if isinstance(ckpt, dict):
-                info["version"] = str(ckpt.get("version", "1.0"))
-                info["tau"] = float(ckpt.get("threshold", 2.810))
+                cfg = ckpt.get("config", {})
+                info["version"] = str(cfg.get("version", "1.1"))
+                info["features"] = cfg.get("features", info["features"])
+                info["d_x"] = cfg.get("d_x", 5)
+                sd = ckpt.get("state_dict", {})
+                if "threshold" in sd:
+                    info["tau"] = round(float(sd["threshold"].item()), 4)
         except Exception:
             pass
     return info
@@ -103,6 +113,16 @@ async def api_alerts(request: Request) -> JSONResponse:
     return JSONResponse(alerts)
 
 
+async def api_benchmark(request: Request) -> JSONResponse:
+    if BENCHMARK_PATH.exists():
+        try:
+            data = json.loads(BENCHMARK_PATH.read_text())
+            return JSONResponse(data)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse({"error": "benchmark.json not generated yet"}, status_code=404)
+
+
 async def api_campaign(request: Request) -> JSONResponse:
     if CAMPAIGN_PATH.exists():
         try:
@@ -138,6 +158,7 @@ async def api_simulate(request: Request) -> JSONResponse:
     })
 
 
+
 async def api_stream(request: Request) -> StreamingResponse:
     """Server-Sent Events (SSE) streaming alerts in real time."""
     async def event_generator():
@@ -169,6 +190,7 @@ async def serve_spa_index(request: Request) -> FileResponse:
 routes = [
     Route("/api/status", api_status, methods=["GET"]),
     Route("/api/alerts", api_alerts, methods=["GET"]),
+    Route("/api/benchmark", api_benchmark, methods=["GET"]),
     Route("/api/campaign", api_campaign, methods=["GET"]),
     Route("/api/eval", api_eval, methods=["GET"]),
     Route("/api/simulate", api_simulate, methods=["POST"]),

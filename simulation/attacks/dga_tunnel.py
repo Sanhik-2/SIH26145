@@ -13,9 +13,11 @@ def dga_tunnel_stream(duration_s=10.0, seed=0, t0=0.0,
                       gap_mean=0.4, label_len=150):
     rng = np.random.default_rng(seed)
     pkts, t = [], t0 + gap_mean
+    flow_key = b"10.0.1.50:5353->8.8.8.8:53"
     while t < t0 + duration_s:
         label = rng.choice(ALPHABET, label_len).tobytes()
         payload = b"q." + label + b".exfil.example"
-        pkts.append(Packet(t=float(t), size=len(payload) + 42, payload=payload))
+        pkts.append(Packet(t=float(t), size=len(payload) + 42, payload=payload, direction=0, flow_key=flow_key))
         t += float(np.clip(rng.normal(gap_mean, 0.1), 0.1, 1.5))
     return pkts
+

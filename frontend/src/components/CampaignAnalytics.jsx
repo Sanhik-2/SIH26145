@@ -1,9 +1,7 @@
-import React, { useState } from 'react';
-import { BarChart3, LineChart, ShieldCheck, Timer, Target, Sparkles, CheckCircle2, ChevronRight } from 'lucide-react';
+import React from 'react';
+import { BarChart3, Target } from 'lucide-react';
 
 export default function CampaignAnalytics({ campaignData = {} }) {
-  const [activeTab, setActiveTab] = useState('summary');
-
   const p1 = campaignData.phase1_baseline || { fpr: 0.0, mean_peak_score: 0.50 };
   const p2 = campaignData.phase2_regime_shift || { regime_shift_fpr: 0.0, mean_peak_score: 2.45 };
   const p3 = campaignData.phase3_sustained_attack || { persistence_rate: 1.0, ttd_seconds: 1.02, mean_peak_score: 880.32 };
@@ -41,140 +39,140 @@ export default function CampaignAnalytics({ campaignData = {} }) {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* 4-Phase Continuous Timeline Header */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 backdrop-blur-xl p-6 shadow-2xl">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+      <div className="rounded-xl border border-zinc-800 bg-[#090a0f] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
           <div>
-            <h3 className="text-lg font-bold text-white tracking-wide uppercase font-mono flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-cyan-400" />
+            <h3 className="text-sm font-semibold text-zinc-100 tracking-wide uppercase font-mono flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-zinc-400" />
               Continuous 300-Second Campaign Benchmark
             </h3>
-            <p className="text-xs text-slate-400 mt-1">
-              Single multiregime baseline checkpoint (τ = {tau.toFixed(3)}) · Zero false positives across calm & regime shifts
+            <p className="text-[11px] text-zinc-400 mt-0.5">
+              Single multiregime baseline checkpoint (τ = {tau.toFixed(3)}) · Zero false positives across calm &amp; regime shifts
             </p>
           </div>
 
           <div className="flex items-center gap-2 font-mono text-xs">
-            <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+            <span className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-emerald-400 text-[11px]">
               0.0% CALM FPR
             </span>
-            <span className="px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+            <span className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-sky-400 text-[11px]">
               1.02s FASTEST TTD
             </span>
-            <span className="px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400">
+            <span className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-300 text-[11px]">
               100% PERSISTENCE
             </span>
           </div>
         </div>
 
         {/* 4 Phase KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 font-mono">
           {/* Phase 1 */}
-          <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+          <div className="p-3.5 rounded-lg bg-zinc-950 border border-zinc-800 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs text-zinc-400 mb-1.5">
               <span>PHASE 1 (0–60s)</span>
               <span className="text-emerald-400">CALM BASELINE</span>
             </div>
-            <div className="text-2xl font-bold text-white">
-              {(p1.fpr * 100).toFixed(1)}% <span className="text-xs text-slate-400 font-normal">FPR</span>
+            <div className="text-xl font-bold text-zinc-100">
+              {(p1.fpr * 100).toFixed(1)}% <span className="text-xs text-zinc-400 font-normal">FPR</span>
             </div>
-            <div className="text-xs text-slate-400 mt-2">
-              Mean Peak Score: <b className="text-emerald-300">{p1.mean_peak_score?.toFixed(2) || '0.50'}</b> &lt;&lt; τ
+            <div className="text-[11px] text-zinc-400 mt-1.5">
+              Mean Peak Score: <span className="text-emerald-400 font-semibold">{p1.mean_peak_score?.toFixed(2) || '0.50'}</span> &lt;&lt; τ
             </div>
           </div>
 
           {/* Phase 2 */}
-          <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+          <div className="p-3.5 rounded-lg bg-zinc-950 border border-zinc-800 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs text-zinc-400 mb-1.5">
               <span>PHASE 2 (60–120s)</span>
-              <span className="text-cyan-400">REGIME SHIFT</span>
+              <span className="text-sky-400">REGIME SHIFT</span>
             </div>
-            <div className="text-2xl font-bold text-white">
-              {((p2.regime_shift_fpr || 0) * 100).toFixed(1)}% <span className="text-xs text-slate-400 font-normal">FPR</span>
+            <div className="text-xl font-bold text-zinc-100">
+              {((p2.regime_shift_fpr || 0) * 100).toFixed(1)}% <span className="text-xs text-zinc-400 font-normal">FPR</span>
             </div>
-            <div className="text-xs text-slate-400 mt-2">
-              Web Sync Mean S: <b className="text-cyan-300">{p2.mean_peak_score?.toFixed(2) || '2.45'}</b> &lt; τ
+            <div className="text-[11px] text-zinc-400 mt-1.5">
+              Web Sync Mean S: <span className="text-sky-400 font-semibold">{p2.mean_peak_score?.toFixed(2) || '2.45'}</span> &lt; τ
             </div>
           </div>
 
           {/* Phase 3 */}
-          <div className="p-4 rounded-xl bg-slate-950/70 border border-red-500/30 bg-red-950/10 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+          <div className="p-3.5 rounded-lg bg-zinc-950 border border-rose-900/40 bg-rose-950/10 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs text-zinc-400 mb-1.5">
               <span>PHASE 3 (120–240s)</span>
-              <span className="text-red-400 font-bold">SUSTAINED ATTACK</span>
+              <span className="text-rose-400 font-medium">SUSTAINED ATTACK</span>
             </div>
-            <div className="text-2xl font-bold text-red-400">
-              {((p3.persistence_rate || 1.0) * 100).toFixed(1)}% <span className="text-xs text-slate-400 font-normal">PERSISTENCE</span>
+            <div className="text-xl font-bold text-rose-400">
+              {((p3.persistence_rate || 1.0) * 100).toFixed(1)}% <span className="text-xs text-zinc-400 font-normal">PERSISTENCE</span>
             </div>
-            <div className="text-xs text-slate-400 mt-2">
-              Time-to-Detect: <b className="text-red-300">{p3.ttd_seconds || 1.02}s</b> | Peak S: {p3.mean_peak_score?.toFixed(1) || '880.3'}
+            <div className="text-[11px] text-zinc-400 mt-1.5">
+              TTD: <span className="text-rose-300 font-semibold">{p3.ttd_seconds || 1.02}s</span> | Peak: {p3.mean_peak_score?.toFixed(1) || '880.3'}
             </div>
           </div>
 
           {/* Phase 4 */}
-          <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+          <div className="p-3.5 rounded-lg bg-zinc-950 border border-zinc-800 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs text-zinc-400 mb-1.5">
               <span>PHASE 4 (240–300s)</span>
-              <span className="text-purple-400">POST RECOVERY</span>
+              <span className="text-zinc-400">POST RECOVERY</span>
             </div>
-            <div className="text-2xl font-bold text-white">
-              {((p4.post_recovery_fpr || 0) * 100).toFixed(1)}% <span className="text-xs text-slate-400 font-normal">FPR</span>
+            <div className="text-xl font-bold text-zinc-100">
+              {((p4.post_recovery_fpr || 0) * 100).toFixed(1)}% <span className="text-xs text-zinc-400 font-normal">FPR</span>
             </div>
-            <div className="text-xs text-slate-400 mt-2">
-              Decay Recovery: <b className="text-purple-300">~{p4.recovery_seconds || 13.0}s</b> (Hysteresis reset)
+            <div className="text-[11px] text-zinc-400 mt-1.5">
+              Decay Recovery: <span className="text-zinc-200 font-semibold">~{p4.recovery_seconds || 13.0}s</span>
             </div>
           </div>
         </div>
 
-        {/* High-Resolution Continuous Campaign Plot Display */}
-        <div className="mt-6 rounded-xl border border-slate-800 overflow-hidden bg-black/80 flex flex-col items-center">
-          <div className="w-full px-4 py-2 border-b border-slate-800 text-xs font-mono text-slate-400 flex items-center justify-between">
+        {/* Continuous Campaign Plot Display */}
+        <div className="mt-5 rounded-lg border border-zinc-800 overflow-hidden bg-black/60 flex flex-col items-center">
+          <div className="w-full px-4 py-2 border-b border-zinc-800 text-[11px] font-mono text-zinc-400 flex items-center justify-between bg-zinc-950">
             <span>FIGURE 1: CONTINUOUS 300s TIMELINE PEAK ANOMALY SCORE S(t) VS DECISION BOUNDARY τ</span>
-            <span className="text-cyan-400">CHECKPOINT: njode_telemetry.pt (v1.0)</span>
+            <span className="text-zinc-300 font-medium">CHECKPOINT: njode_telemetry.pt (v1.0)</span>
           </div>
           <img
             src="/assets/campaign.png"
             alt="CHRONOS Continuous Campaign Benchmark Plot"
-            className="w-full max-h-[420px] object-contain p-2 hover:scale-[1.01] transition-transform duration-300"
+            className="w-full max-h-[420px] object-contain p-2"
           />
         </div>
       </div>
 
       {/* Canonical Comparison Table */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 backdrop-blur-xl p-6 shadow-2xl">
-        <h4 className="text-sm font-bold text-white tracking-wide uppercase font-mono mb-4 flex items-center gap-2">
-          <Target className="w-4 h-4 text-cyan-400" />
-          Canonical Benchmark Across Attack Vectors (PPT Presentation Reference)
+      <div className="rounded-xl border border-zinc-800 bg-[#090a0f] p-5">
+        <h4 className="text-xs font-semibold text-zinc-200 tracking-wider uppercase font-mono mb-3.5 flex items-center gap-2">
+          <Target className="w-4 h-4 text-zinc-400" />
+          Canonical Benchmark Across Attack Vectors
         </h4>
 
-        <div className="overflow-x-auto rounded-xl border border-slate-800/80 bg-slate-950/70">
+        <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950">
           <table className="w-full text-left border-collapse font-mono text-xs">
             <thead>
-              <tr className="border-b border-slate-800 bg-slate-900/90 text-slate-400 uppercase text-[11px]">
-                <th className="py-3 px-4">Attack Scenario</th>
-                <th className="py-3 px-4 text-right">Mean Peak Score (S)</th>
-                <th className="py-3 px-4 text-center">Decision Threshold (τ)</th>
-                <th className="py-3 px-4 text-right">Time-to-Detect (TTD)</th>
-                <th className="py-3 px-4 text-center">Persistence Rate</th>
-                <th className="py-3 px-4">Dominant Channel Attribution</th>
-                <th className="py-3 px-4">Jury Review Takeaway</th>
+              <tr className="border-b border-zinc-800 bg-zinc-900 text-zinc-400 uppercase text-[10px] tracking-wider">
+                <th className="py-2.5 px-3">Attack Scenario</th>
+                <th className="py-2.5 px-3 text-right">Mean Peak Score (S)</th>
+                <th className="py-2.5 px-3 text-center">Threshold (τ)</th>
+                <th className="py-2.5 px-3 text-right">TTD</th>
+                <th className="py-2.5 px-3 text-center">Persistence</th>
+                <th className="py-2.5 px-3">Dominant Channel</th>
+                <th className="py-2.5 px-3">Review Takeaway</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/50">
+            <tbody className="divide-y divide-zinc-850">
               {benchmarkMatrix.map((row, idx) => (
-                <tr key={idx} className="hover:bg-slate-800/40 transition-colors">
-                  <td className="py-3 px-4 font-bold text-white">{row.attack}</td>
-                  <td className="py-3 px-4 text-right font-bold text-red-400">{row.peakScore}</td>
-                  <td className="py-3 px-4 text-center text-slate-400">{row.tau}</td>
-                  <td className="py-3 px-4 text-right text-cyan-300 font-bold">{row.ttd}</td>
-                  <td className="py-3 px-4 text-center text-emerald-400">{row.persistence}</td>
-                  <td className="py-3 px-4">
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-bold">
+                <tr key={idx} className="hover:bg-zinc-900/50 transition-colors">
+                  <td className="py-2.5 px-3 font-medium text-zinc-200">{row.attack}</td>
+                  <td className="py-2.5 px-3 text-right font-semibold text-rose-400">{row.peakScore}</td>
+                  <td className="py-2.5 px-3 text-center text-zinc-400">{row.tau}</td>
+                  <td className="py-2.5 px-3 text-right text-sky-400 font-medium">{row.ttd}</td>
+                  <td className="py-2.5 px-3 text-center text-emerald-400">{row.persistence}</td>
+                  <td className="py-2.5 px-3">
+                    <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-amber-300 text-[11px]">
                       {row.channel}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-slate-300 text-[11px]">{row.verdict}</td>
+                  <td className="py-2.5 px-3 text-zinc-400 text-[11px]">{row.verdict}</td>
                 </tr>
               ))}
             </tbody>

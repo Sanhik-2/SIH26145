@@ -22,17 +22,9 @@ if str(REPO_ROOT) not in sys.path:
 import torch
 
 from features.extractor import Packet
+from diode.protocol import decode_packet
 from features.windowing import LiveFeeder
 from models.njode import NJODE
-
-
-def decode_packet(data: bytes) -> Packet:
-    """Decode binary frame: [8B float t][4B uint size][payload]."""
-    if len(data) < 12:
-        return None
-    t, size = struct.unpack(">dI", data[:12])
-    payload = data[12:]
-    return Packet(t=t, size=size, payload=payload)
 
 
 def main():

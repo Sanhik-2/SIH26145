@@ -43,7 +43,15 @@ def web_sync_stream(duration_s=600.0, seed=0, t0=0.0):
             repeated = (params * ((pad_len // len(params)) + 2))[:pad_len]
             payload += repeated
 
-        pkts.append(Packet(t=float(t), size=len(payload), payload=payload))
+        pkts.append(
+            Packet(
+                t=float(t),
+                size=len(payload),
+                payload=payload,
+                direction=0,
+                flow_key=host,
+            )
+        )
         counter += 1
         # Sync intervals are around 6-9s with small jitter
         t += float(np.clip(rng.normal(7.5, 1.2), 3.0, 14.0))

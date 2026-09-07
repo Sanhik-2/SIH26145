@@ -21,15 +21,15 @@ import {
 
 // Node definitions reflecting the actual physical air-gap network
 const INITIAL_NODES = [
-  // Zone A: Air-Gapped High Security In-Zone
+  // Zone A: Air-Gapped High Security In-Zone (Left)
   {
     id: 'plc-01',
     label: 'SCADA PLC-01',
     sublabel: 'Turbine Governor',
     ip: '10.0.1.10',
     zone: 'in-zone',
-    x: 180,
-    y: 160,
+    x: 140,
+    y: 140,
     vx: 0,
     vy: 0,
     radius: 18,
@@ -43,10 +43,10 @@ const INITIAL_NODES = [
     ip: '10.0.1.11',
     zone: 'in-zone',
     x: 140,
-    y: 280,
+    y: 260,
     vx: 0,
     vy: 0,
-    radius: 17,
+    radius: 18,
     type: 'controller',
     normalRate: '3 pkts/s',
   },
@@ -56,11 +56,11 @@ const INITIAL_NODES = [
     sublabel: 'Engineering Terminal',
     ip: '10.0.1.25',
     zone: 'in-zone',
-    x: 290,
-    y: 110,
+    x: 270,
+    y: 140,
     vx: 0,
     vy: 0,
-    radius: 22,
+    radius: 20,
     type: 'workstation',
     normalRate: '12 pkts/s',
   },
@@ -70,57 +70,57 @@ const INITIAL_NODES = [
     sublabel: 'SCADA Telemetry DB',
     ip: '10.0.1.50',
     zone: 'in-zone',
-    x: 260,
-    y: 330,
+    x: 270,
+    y: 260,
     vx: 0,
     vy: 0,
-    radius: 20,
+    radius: 19,
     type: 'database',
     normalRate: '8 pkts/s',
   },
   {
     id: 'tx-diode',
     label: 'In-Zone TX Diode',
-    sublabel: 'Simplex UDP Laser Emitter',
+    sublabel: 'Simplex Laser Emitter',
     ip: '10.0.1.1',
     zone: 'diode-tx',
-    x: 420,
-    y: 220,
+    x: 410,
+    y: 200,
     vx: 0,
     vy: 0,
-    radius: 24,
+    radius: 22,
     type: 'transmitter',
     normalRate: '18 pkts/s',
   },
 
-  // The Diode Optical Barrier Node
+  // Optical Air-Gap Barrier (Center)
   {
     id: 'optical-gap',
     label: 'Optical Air-Gap Isolator',
     sublabel: '100% Galvanic Simplex',
-    ip: '0.0.0.0 [PHYSICAL]',
+    ip: 'PHYSICAL GAP',
     zone: 'barrier',
-    x: 560,
-    y: 220,
+    x: 540,
+    y: 200,
     vx: 0,
     vy: 0,
-    radius: 16,
+    radius: 15,
     type: 'barrier',
-    normalRate: 'Simplex Laser',
+    normalRate: 'Simplex Fiber',
   },
 
-  // Zone B: Monitored Scanner Side / SOC Subnet
+  // Zone B: Monitored Scanner Side / SOC Subnet (Right)
   {
     id: 'rx-diode',
     label: 'Scanner RX Diode',
     sublabel: 'Photodiode Detector',
     ip: '192.168.10.1',
     zone: 'diode-rx',
-    x: 700,
-    y: 220,
+    x: 670,
+    y: 200,
     vx: 0,
     vy: 0,
-    radius: 24,
+    radius: 22,
     type: 'receiver',
     normalRate: '18 pkts/s',
   },
@@ -130,27 +130,13 @@ const INITIAL_NODES = [
     sublabel: 'Continuous Latent Engine',
     ip: '192.168.10.5',
     zone: 'scanner',
-    x: 840,
-    y: 150,
+    x: 810,
+    y: 140,
     vx: 0,
     vy: 0,
-    radius: 26,
+    radius: 24,
     type: 'ai-core',
     normalRate: 'Inference 1.1ms',
-  },
-  {
-    id: 'soc-siem',
-    label: 'SOC Alert Sink',
-    sublabel: 'Incident Dispatcher',
-    ip: '192.168.10.100',
-    zone: 'scanner',
-    x: 960,
-    y: 260,
-    vx: 0,
-    vy: 0,
-    radius: 20,
-    type: 'siem',
-    normalRate: 'Active Polling',
   },
   {
     id: 'sync-srv',
@@ -158,30 +144,45 @@ const INITIAL_NODES = [
     sublabel: 'NTP & Benign Sync',
     ip: '192.168.10.15',
     zone: 'scanner',
-    x: 790,
-    y: 340,
+    x: 810,
+    y: 260,
     vx: 0,
     vy: 0,
-    radius: 19,
+    radius: 18,
     type: 'server',
     normalRate: '0.15 pkts/s',
+  },
+  {
+    id: 'soc-siem',
+    label: 'SOC Alert Sink',
+    sublabel: 'Incident Dispatcher',
+    ip: '192.168.10.100',
+    zone: 'scanner',
+    x: 940,
+    y: 200,
+    vx: 0,
+    vy: 0,
+    radius: 20,
+    type: 'siem',
+    normalRate: 'Active Polling',
   },
 ];
 
 const INITIAL_EDGES = [
-  { from: 'plc-01', to: 'tx-diode', speed: 1.0 },
-  { from: 'plc-02', to: 'tx-diode', speed: 1.0 },
-  { from: 'ews-alpha', to: 'tx-diode', speed: 1.4 },
-  { from: 'db-historian', to: 'tx-diode', speed: 1.1 },
-  { from: 'ews-alpha', to: 'db-historian', speed: 0.8 },
-  { from: 'plc-01', to: 'plc-02', speed: 0.6 },
+  { from: 'plc-01', to: 'tx-diode' },
+  { from: 'plc-02', to: 'tx-diode' },
+  { from: 'ews-alpha', to: 'tx-diode' },
+  { from: 'db-historian', to: 'tx-diode' },
+  { from: 'ews-alpha', to: 'db-historian' },
+  { from: 'plc-01', to: 'plc-02' },
   // Simplex optical bridge
-  { from: 'tx-diode', to: 'optical-gap', speed: 2.2, isDiodeBridge: true },
-  { from: 'optical-gap', to: 'rx-diode', speed: 2.2, isDiodeBridge: true },
+  { from: 'tx-diode', to: 'optical-gap', isDiodeBridge: true },
+  { from: 'optical-gap', to: 'rx-diode', isDiodeBridge: true },
   // Scanner side
-  { from: 'rx-diode', to: 'njode-core', speed: 1.8 },
-  { from: 'njode-core', to: 'soc-siem', speed: 1.2 },
-  { from: 'rx-diode', to: 'sync-srv', speed: 0.7 },
+  { from: 'rx-diode', to: 'njode-core' },
+  { from: 'rx-diode', to: 'sync-srv' },
+  { from: 'njode-core', to: 'soc-siem' },
+  { from: 'sync-srv', to: 'soc-siem' },
 ];
 
 export default function NetworkGraphView({ currentScenario = 'calm', score = 0.48, tau = 2.81 }) {
@@ -204,7 +205,122 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
 
   // Map malware info dynamically based on current scenario
   const getMalwareStatus = (nodeId) => {
-    if (currentScenario === 'exfil_burst') {
+    if (currentScenario === 'ddos_flood') {
+      if (nodeId === 'plc-02') {
+        return {
+          isInfected: true,
+          severity: 'CRITICAL',
+          color: '#f43f5e',
+          name: 'Target.CoolingLoop.DDoSInundation',
+          description: 'Cooling loop controller under high-rate reflection SYN/UDP volumetric flood (200 pkts/s, tiny 64B frames).',
+          rate: '200.0 pkts/s (INBOUND)',
+          dominantChannel: 'direction (inbound) / burst',
+          peakScore: score.toFixed(1),
+          cve: 'CWE-400 / SYN-UDP-Flood',
+          traces: [
+            'T-0.3s | 198.51.100.42:53211 → 10.0.1.11:80 | TCP SYN | 64 B | H=2.10 bits | 🚨 INBOUND FLOOD (flow 0xA11F)',
+            'T-0.2s | 203.0.113.88:41904 → 10.0.1.11:80  | TCP SYN | 64 B | H=2.08 bits | 🚨 SPOOFED SOURCE (flow 0xB472)',
+            'T-0.1s | 192.0.2.14:62890 → 10.0.1.11:80    | TCP SYN | 64 B | H=2.12 bits | 🚨 VOLUMETRIC SURGE (flow 0xC931)',
+          ]
+        };
+      }
+      if (nodeId === 'rx-diode' || nodeId === 'tx-diode') {
+        return {
+          isInfected: false,
+          isTransitThreat: true,
+          severity: 'CRITICAL',
+          color: '#f43f5e',
+          name: 'Optical Receiver Saturated',
+          description: 'Simplex channel inundated with inbound traffic (direction=1, 200 pkts/s). Multiple spoofed flow hashes detected.',
+          rate: '200.0 pkts/s',
+          dominantChannel: 'direction (inbound)',
+          peakScore: score.toFixed(1),
+        };
+      }
+      if (nodeId === 'njode-core') {
+        return {
+          isInfected: false,
+          isTriggered: true,
+          severity: 'ALERT',
+          color: '#f43f5e',
+          name: 'Volumetric DDoS Anomaly Confirmed',
+          description: 'Continuous latent space breach: S = ' + score.toFixed(1) + ' > τ = 2.81. Attributed to direction (inbound) and burst.',
+        };
+      }
+    } else if (currentScenario === 'tls_c2') {
+      if (nodeId === 'ews-alpha') {
+        return {
+          isInfected: true,
+          severity: 'HIGH',
+          color: '#8b5cf6',
+          name: 'Malware.EncryptedTLS.Ghost',
+          description: 'Engineering terminal running covert TLS C2 session. Ciphertext entropy ~7.9 bits is indistinguishable from benign TLS; detected passively via timing regularity (T0 ± δ) and fixed 512B frames without payload decryption.',
+          rate: 'Periodic Cadence (1.8s)',
+          dominantChannel: 'iat (metadata-only)',
+          peakScore: score.toFixed(1),
+          cve: 'CVE-2026-9211',
+          traces: [
+            'T-0.4s | 10.0.1.25:49812 → 192.168.10.1:443 | TLSv1.3 | 512 B | H=7.91 bits | 🚨 METADATA REGULARITY (iat=1.80s)',
+            'T-0.2s | 10.0.1.25:49812 → 192.168.10.1:443 | TLSv1.3 | 512 B | H=7.89 bits | 🚨 RIGID FRAME CADENCE (T0±δ)',
+            'T-0.0s | 10.0.1.25:49812 → 192.168.10.1:443 | TLSv1.3 | 512 B | H=7.92 bits | 🚨 PASSIVE TIMING BREACH',
+          ]
+        };
+      }
+      if (nodeId === 'tx-diode' || nodeId === 'rx-diode' || nodeId === 'njode-core') {
+        return {
+          isInfected: false,
+          isTransitThreat: true,
+          severity: 'ALERT',
+          color: '#8b5cf6',
+          name: 'Encrypted Channel Timing Anomaly',
+          description: 'Non-benign inter-arrival distribution detected across TLS flows without decryption.',
+          peakScore: score.toFixed(1),
+        };
+      }
+    } else if (currentScenario === 'portscan') {
+      if (nodeId === 'ews-alpha') {
+        return {
+          isInfected: true,
+          severity: 'HIGH',
+          color: '#3b82f6',
+          name: 'Recon.HorizontalPortScan.FanOut',
+          description: 'Compromised workstation performing horizontal port sweep across 128+ destination ports. Burst of small 44-60B probe frames, single source origin, high distinct flow entropy.',
+          rate: 'Rapid Probe Burst (44B)',
+          dominantChannel: 'burst / bytes',
+          peakScore: score.toFixed(1),
+          cve: 'CWE-200 / Network-Recon',
+          traces: [
+            'T-0.3s | 10.0.1.25:54321 → 10.0.1.10:445  | TCP SYN | 44 B | H=1.85 bits | 🚨 FAN-OUT PORT PROBE (flow 0x8F1A)',
+            'T-0.2s | 10.0.1.25:54321 → 10.0.1.11:502  | TCP SYN | 44 B | H=1.84 bits | 🚨 FAN-OUT PORT PROBE (flow 0x8F1B)',
+            'T-0.1s | 10.0.1.25:54321 → 10.0.1.50:4840 | TCP SYN | 44 B | H=1.87 bits | 🚨 RECON SWEEP SURGE (flow 0x8F1C)',
+          ]
+        };
+      }
+      if (nodeId === 'plc-01' || nodeId === 'plc-02' || nodeId === 'db-historian') {
+        return {
+          isInfected: false,
+          isTransitThreat: true,
+          severity: 'SUSPECTED',
+          color: '#60a5fa',
+          name: 'Probed Controller Target',
+          description: 'Targeted by horizontal reconnaissance port sweep from Workstation Alpha.',
+          rate: 'Probe Target',
+          dominantChannel: 'burst',
+          peakScore: score.toFixed(1),
+        };
+      }
+      if (nodeId === 'tx-diode' || nodeId === 'rx-diode' || nodeId === 'njode-core') {
+        return {
+          isInfected: false,
+          isTransitThreat: true,
+          severity: 'ALERT',
+          color: '#3b82f6',
+          name: 'Multi-Flow Reconnaissance Fan-Out',
+          description: 'Abnormal spike in distinct flow identifiers and tiny probe datagrams traversing the diode.',
+          peakScore: score.toFixed(1),
+        };
+      }
+    } else if (currentScenario === 'exfil_burst') {
       if (nodeId === 'ews-alpha') {
         return {
           isInfected: true,
@@ -216,6 +332,11 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
           dominantChannel: 'bytes (100%)',
           peakScore: score.toFixed(1),
           cve: 'CVE-2026-8803',
+          traces: [
+            'T-0.3s | 10.0.1.25:9999 → 10.0.1.1:9999 | UDP | 1400 B | H=7.82 bits | 🚨 ASYMMETRIC OUTBOUND BURST (flow 0xEE41)',
+            'T-0.2s | 10.0.1.25:9999 → 10.0.1.1:9999 | UDP | 1400 B | H=7.85 bits | 🚨 BULK EXFIL DETECTED (flow 0xEE41)',
+            'T-0.1s | 10.0.1.25:9999 → 10.0.1.1:9999 | UDP | 1400 B | H=7.84 bits | 🚨 SKEWED BYTE RATIO (flow 0xEE41)',
+          ]
         };
       }
       if (nodeId === 'tx-diode' || nodeId === 'rx-diode') {
@@ -250,9 +371,14 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
           name: 'Backdoor.CobaltC2.Jitter',
           description: 'Compromised PLC governor sending periodic high-entropy command-and-control heartbeats at 2.5s intervals.',
           rate: 'Periodic (2.5s jittered)',
-          dominantChannel: 'entropy (100%)',
+          dominantChannel: 'entropy / iat',
           peakScore: score.toFixed(1),
           cve: 'CVE-2026-1640',
+          traces: [
+            'T-0.3s | 10.0.1.10:4840 → 198.51.100.99:8443 | TCP | 256 B | H=6.85 bits | 🚨 CADENCE BEACON (T0=2.5s, flow 0x7C11)',
+            'T-0.2s | 10.0.1.10:4840 → 198.51.100.99:8443 | TCP | 256 B | H=6.88 bits | 🚨 PERIODIC C2 HEARTBEAT (flow 0x7C11)',
+            'T-0.1s | 10.0.1.10:4840 → 198.51.100.99:8443 | TCP | 256 B | H=6.82 bits | 🚨 NON-BENIGN IAT PEAK',
+          ]
         };
       }
       if (nodeId === 'tx-diode' || nodeId === 'rx-diode' || nodeId === 'njode-core') {
@@ -262,7 +388,7 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
           severity: 'SUSPECTED',
           color: '#c084fc',
           name: 'Periodic Entropy Breach',
-          description: 'Strict periodicity detected in irregular packet gaps. Attributed to entropy.',
+          description: 'Strict periodicity detected in irregular packet gaps. Attributed to timing/entropy.',
           peakScore: score.toFixed(1),
         };
       }
@@ -278,6 +404,11 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
           dominantChannel: 'entropy (86.7%)',
           peakScore: score.toFixed(1),
           cve: 'CVE-2026-7508',
+          traces: [
+            'T-0.3s | 10.0.1.50:53 → 10.0.1.1:53 | DNS Query | 150 B | H=5.12 bits | 🚨 HIGH-ENTROPY DGA LABEL (flow 0x3D88)',
+            'T-0.2s | 10.0.1.50:53 → 10.0.1.1:53 | DNS Query | 150 B | H=5.08 bits | 🚨 ALGORITHMIC DOMAIN EXFIL (flow 0x3D88)',
+            'T-0.1s | 10.0.1.50:53 → 10.0.1.1:53 | DNS Query | 150 B | H=5.15 bits | 🚨 TUNNEL SURGE DETECTED',
+          ]
         };
       }
       if (nodeId === 'tx-diode' || nodeId === 'rx-diode' || nodeId === 'njode-core') {
@@ -312,8 +443,8 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
 
     // Packet particles traveling along edges
     const particles = [];
-    const maxParticles = 40;
 
+    let resizeObserver;
     const resize = () => {
       const parent = canvas.parentElement;
       canvas.width = (parent && parent.clientWidth > 0) ? parent.clientWidth : 960;
@@ -321,14 +452,17 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
     };
     resize();
     window.addEventListener('resize', resize);
+    if (canvas.parentElement && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(resize);
+      resizeObserver.observe(canvas.parentElement);
+    }
 
-    // Seed initial particles
+    // Seed particles per edge with uniform spacing
     edges.forEach((edge, eIdx) => {
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 2; i++) {
         particles.push({
           edgeIndex: eIdx,
-          progress: Math.random(),
-          speed: 0.006 * (edge.speed || 1.0) * (currentScenario !== 'calm' ? 1.6 : 1.0),
+          progress: i * 0.5 + Math.random() * 0.1,
         });
       }
     });
@@ -341,39 +475,55 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
       ctx.translate(transform.x, transform.y);
       ctx.scale(transform.k, transform.k);
 
-      // Draw subtle background grid for Obsidian feel
-      ctx.strokeStyle = 'rgba(30, 41, 59, 0.25)';
+      // 1. Subtle, clean structural grid (Dieter Rams / Swiss ratio)
+      ctx.strokeStyle = 'rgba(39, 39, 42, 0.35)'; // zinc-800
       ctx.lineWidth = 1;
-      const gridSize = 40;
-      for (let x = -200; x < canvas.width * 1.5; x += gridSize) {
+      const gridSize = 48;
+      for (let x = -200; x < canvas.width * 1.6; x += gridSize) {
         ctx.beginPath();
         ctx.moveTo(x, -200);
-        ctx.lineTo(x, canvas.height * 1.5);
+        ctx.lineTo(x, canvas.height * 1.6);
         ctx.stroke();
       }
-      for (let y = -200; y < canvas.height * 1.5; y += gridSize) {
+      for (let y = -200; y < canvas.height * 1.6; y += gridSize) {
         ctx.beginPath();
         ctx.moveTo(-200, y);
-        ctx.lineTo(canvas.width * 1.5, y);
+        ctx.lineTo(canvas.width * 1.6, y);
         ctx.stroke();
       }
 
-      // Draw Zone Partition Dividers (Air-Gapped In-Zone vs Monitored Scanner Side)
-      ctx.strokeStyle = 'rgba(6, 182, 212, 0.15)';
-      ctx.setLineDash([6, 6]);
-      ctx.lineWidth = 1.5;
+      // 2. Optical Air-Gap Demarcation Zone (Center: x = 480 to 600)
+      ctx.fillStyle = 'rgba(24, 24, 27, 0.45)';
+      ctx.fillRect(480, 20, 120, canvas.height - 40);
+
+      ctx.strokeStyle = 'rgba(63, 63, 70, 0.5)';
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(560, 40);
-      ctx.lineTo(560, canvas.height - 40);
+      ctx.moveTo(480, 20);
+      ctx.lineTo(480, canvas.height - 20);
+      ctx.moveTo(600, 20);
+      ctx.lineTo(600, canvas.height - 20);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      ctx.fillStyle = 'rgba(6, 182, 212, 0.4)';
-      ctx.font = '10px "JetBrains Mono", monospace';
-      ctx.fillText('◄ AIR-GAPPED HIGH-SECURITY IN-ZONE', 280, 50);
-      ctx.fillText('MONITORED SCANNER / SOC SIDE ►', 620, 50);
+      // Section Boundary Headers
+      ctx.font = '600 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#71717a';
+      ctx.textAlign = 'left';
+      ctx.fillText('ZONE A  ·  AIR-GAPPED IN-ZONE', 140, 42);
 
-      // 1. Draw Edges (Connections)
+      ctx.textAlign = 'right';
+      ctx.fillText('ZONE B  ·  PASSIVE MONITOR ENCLAVE', 940, 42);
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#a1a1aa';
+      ctx.fillText('OPTICAL AIR GAP', 540, 42);
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#52525b';
+      ctx.fillText('HARDWARE SIMPLEX DIODE', 540, 56);
+
+      // 3. Draw Edges (Physical fiber/copper links)
       edges.forEach((edge) => {
         const source = nodes.find(n => n.id === edge.from);
         const target = nodes.find(n => n.id === edge.to);
@@ -388,26 +538,24 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
         ctx.lineTo(target.x, target.y);
 
         if (edge.isDiodeBridge) {
-          // Highlighted Optical Simplex Diode Link
-          ctx.strokeStyle = isThreatLine ? '#ef4444' : '#00f0ff';
-          ctx.lineWidth = 2.5;
-          ctx.shadowColor = isThreatLine ? 'rgba(239, 68, 68, 0.8)' : 'rgba(0, 240, 255, 0.8)';
-          ctx.shadowBlur = 10;
+          // Hardware Diode Simplex Link: distinct dashed path indicating galvanic gap
+          ctx.setLineDash([5, 3]);
+          ctx.strokeStyle = isThreatLine ? '#f43f5e' : '#38bdf8';
+          ctx.lineWidth = 1.5;
         } else if (isThreatLine) {
-          ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
-          ctx.lineWidth = 1.8;
-          ctx.shadowColor = 'rgba(239, 68, 68, 0.5)';
-          ctx.shadowBlur = 6;
-        } else {
-          ctx.strokeStyle = 'rgba(71, 85, 105, 0.45)';
+          ctx.setLineDash([]);
+          ctx.strokeStyle = 'rgba(244, 63, 94, 0.4)';
           ctx.lineWidth = 1.2;
-          ctx.shadowBlur = 0;
+        } else {
+          ctx.setLineDash([]);
+          ctx.strokeStyle = 'rgba(39, 39, 42, 0.7)';
+          ctx.lineWidth = 1.0;
         }
         ctx.stroke();
-        ctx.shadowBlur = 0;
+        ctx.setLineDash([]);
       });
 
-      // 2. Animate and Draw Subtle Flowing Packet Particles
+      // 4. Stable, Constant-Velocity Packet Flows with 2-Step Trailing Fade
       particles.forEach((p) => {
         const edge = edges[p.edgeIndex];
         if (!edge) return;
@@ -415,105 +563,119 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
         const target = nodes.find(n => n.id === edge.to);
         if (!source || !target) return;
 
-        p.progress += p.speed;
-        if (p.progress > 1.0) p.progress = 0;
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
+        const edgeDist = Math.hypot(dx, dy) || 1;
 
-        const px = source.x + (target.x - source.x) * p.progress;
-        const py = source.y + (target.y - source.y) * p.progress;
+        // Uniform physical velocity: exactly 45 px/sec (0.75 px/frame at 60 FPS)
+        const pxPerFrame = 0.75;
+        p.progress += pxPerFrame / edgeDist;
+        if (p.progress > 1.0) p.progress -= 1.0;
 
         const sourceStatus = getMalwareStatus(source.id);
         const isThreat = sourceStatus.isInfected || (edge.isDiodeBridge && currentScenario !== 'calm');
 
+        // Color Theory Palette:
+        // Crimson (244, 63, 94) for threats, Sky (56, 189, 248) for diode simplex, Slate (148, 163, 184) for normal
+        const rgb = isThreat 
+          ? '244, 63, 94' 
+          : edge.isDiodeBridge 
+          ? '56, 189, 248' 
+          : '148, 163, 184';
+
+        // Packet Head (crisp, zero blur)
+        const px0 = source.x + dx * p.progress;
+        const py0 = source.y + dy * p.progress;
         ctx.beginPath();
-        ctx.arc(px, py, isThreat ? 3.2 : 2.2, 0, Math.PI * 2);
-        ctx.fillStyle = isThreat ? '#ef4444' : '#00f0ff';
-        ctx.shadowColor = isThreat ? '#ef4444' : '#00f0ff';
-        ctx.shadowBlur = 8;
+        ctx.arc(px0, py0, isThreat ? 2.5 : 2.0, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${rgb}, 0.95)`;
         ctx.fill();
-        ctx.shadowBlur = 0;
+
+        // Trail Step 1 (4px behind)
+        const p1 = p.progress - (4 / edgeDist);
+        if (p1 >= 0) {
+          const px1 = source.x + dx * p1;
+          const py1 = source.y + dy * p1;
+          ctx.beginPath();
+          ctx.arc(px1, py1, 1.5, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${rgb}, 0.35)`;
+          ctx.fill();
+        }
+
+        // Trail Step 2 (8px behind)
+        const p2 = p.progress - (8 / edgeDist);
+        if (p2 >= 0) {
+          const px2 = source.x + dx * p2;
+          const py2 = source.y + dy * p2;
+          ctx.beginPath();
+          ctx.arc(px2, py2, 1.0, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${rgb}, 0.15)`;
+          ctx.fill();
+        }
       });
 
-      // 3. Draw Nodes (Obsidian Graph Nodes)
+      // 5. Draw Nodes (Minimalist Matte Surface with Status Pip)
       nodes.forEach((node) => {
         const status = getMalwareStatus(node.id);
         const isHovered = hoveredNode?.id === node.id;
         const isSelected = selectedNode?.id === node.id;
 
-        // Outer threat pulse ring for infected nodes
-        if (status.isInfected) {
-          ctx.beginPath();
-          ctx.arc(node.x, node.y, node.radius + 8 + Math.sin(Date.now() * 0.008) * 3, 0, Math.PI * 2);
-          ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        }
-
-        // Selected halo
+        // Subtle hover / selected ring (1px hairline)
         if (isSelected || isHovered) {
           ctx.beginPath();
-          ctx.arc(node.x, node.y, node.radius + 5, 0, Math.PI * 2);
-          ctx.strokeStyle = '#00f0ff';
-          ctx.lineWidth = 2;
+          ctx.arc(node.x, node.y, node.radius + 4, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(212, 212, 216, 0.25)';
+          ctx.lineWidth = 1;
           ctx.stroke();
         }
 
-        // Main Node Body Circle
+        // Main Node Body (Matte Dark Zinc)
         ctx.beginPath();
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-
-        if (status.isInfected) {
-          ctx.fillStyle = '#991b1b';
-          ctx.shadowColor = '#ef4444';
-          ctx.shadowBlur = 15;
-        } else if (status.isTransitThreat) {
-          ctx.fillStyle = '#c2410c';
-          ctx.shadowColor = '#f97316';
-          ctx.shadowBlur = 10;
-        } else if (node.zone === 'barrier') {
-          ctx.fillStyle = '#0f766e';
-          ctx.shadowColor = '#14b8a6';
-          ctx.shadowBlur = 8;
-        } else {
-          ctx.fillStyle = '#1e293b';
-          ctx.shadowColor = '#38bdf8';
-          ctx.shadowBlur = isHovered ? 12 : 4;
-        }
+        ctx.fillStyle = node.zone === 'barrier' ? '#18181b' : '#111318';
         ctx.fill();
-        ctx.shadowBlur = 0;
 
-        // Node Border Ring
-        ctx.strokeStyle = status.isInfected
-          ? '#ef4444'
+        // 1px Border Ring
+        ctx.strokeStyle = (status.isInfected || status.isTriggered)
+          ? '#f43f5e'
           : status.isTransitThreat
-          ? '#fb923c'
+          ? '#f59e0b'
           : isHovered
-          ? '#38bdf8'
-          : '#475569';
-        ctx.lineWidth = isHovered ? 2.5 : 1.5;
+          ? '#52525b'
+          : '#27272a';
+        ctx.lineWidth = 1.0;
         ctx.stroke();
 
-        // Node Inner Core Dot
+        // Minimalist Status Pip (Dieter Rams discrete indicator)
+        const pipColor = (status.isInfected || status.isTriggered)
+          ? '#f43f5e'
+          : status.isTransitThreat
+          ? '#f59e0b'
+          : node.zone === 'barrier'
+          ? '#38bdf8'
+          : '#10b981';
+
         ctx.beginPath();
-        ctx.arc(node.x, node.y, node.radius * 0.35, 0, Math.PI * 2);
-        ctx.fillStyle = status.isInfected ? '#fecaca' : isHovered ? '#ffffff' : '#94a3b8';
+        ctx.arc(node.x, node.y, 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = pipColor;
         ctx.fill();
 
-        // Node Label Typography
+        // Primary Label Typography
         ctx.font = isHovered
-          ? 'bold 11px "JetBrains Mono", monospace'
-          : '10px "JetBrains Mono", monospace';
-        ctx.fillStyle = status.isInfected
-          ? '#f87171'
+          ? '600 11px Inter, system-ui, sans-serif'
+          : '500 11px Inter, system-ui, sans-serif';
+        ctx.fillStyle = (status.isInfected || status.isTriggered)
+          ? '#f43f5e'
           : isHovered
           ? '#ffffff'
-          : '#cbd5e1';
+          : '#e4e4e7';
         ctx.textAlign = 'center';
         ctx.fillText(node.label, node.x, node.y + node.radius + 14);
 
-        // Small IP / Role Sublabel
-        ctx.font = '9px "JetBrains Mono", monospace';
-        ctx.fillStyle = status.isInfected ? '#fca5a5' : '#64748b';
-        ctx.fillText(node.ip, node.x, node.y + node.radius + 25);
+        // Secondary Monospace IP / Role
+        ctx.font = '10px "JetBrains Mono", monospace';
+        ctx.fillStyle = '#71717a';
+        ctx.fillText(node.ip, node.x, node.y + node.radius + 26);
       });
 
       ctx.restore();
@@ -525,6 +687,7 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
 
     return () => {
       window.removeEventListener('resize', resize);
+      if (resizeObserver) resizeObserver.disconnect();
       cancelAnimationFrame(animationId);
     };
   }, [nodes, edges, currentScenario, hoveredNode, selectedNode, transform]);
@@ -607,61 +770,65 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
   const hoveredNodeStatus = hoveredNode ? getMalwareStatus(hoveredNode.id) : null;
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 backdrop-blur-xl overflow-hidden shadow-2xl flex flex-col relative" ref={containerRef}>
+    <div className="rounded-xl border border-zinc-800 bg-[#090a0f] overflow-hidden flex flex-col relative h-full" ref={containerRef}>
       {/* Top Controls Header */}
-      <div className="flex flex-wrap items-center justify-between px-6 py-3.5 border-b border-slate-800/80 bg-slate-950/80">
+      <div className="flex flex-wrap items-center justify-between px-5 py-2.5 border-b border-zinc-800/80 bg-zinc-950/60 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="p-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+          <div className="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400">
             <Layers className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-white tracking-wide uppercase font-mono flex items-center gap-2">
-              Obsidian Topology Graph // Air-Gap Network Map
+            <h3 className="text-xs font-semibold text-zinc-200 tracking-wider uppercase font-mono">
+              Hardware Diode Topology // Passive Tap Architecture
             </h3>
-            <p className="text-xs text-slate-400">
-              Interactive force-directed nodes · Real-time malware color-coding · Subtle packet streams
+            <p className="text-[11px] text-zinc-400">
+              Unidirectional physical barrier · Simplex laser tap · Continuous latent observation
             </p>
           </div>
         </div>
 
         {/* Action buttons & Zoom controls */}
         <div className="flex items-center gap-2 font-mono text-xs">
-          <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-xl border border-slate-800">
+          <div className="flex items-center gap-1 bg-zinc-900 px-1.5 py-1 rounded-md border border-zinc-800">
             <button
               onClick={() => setTransform(t => ({ ...t, k: Math.min(t.k * 1.15, 2.5) }))}
-              className="p-1 text-slate-400 hover:text-white rounded"
+              className="p-1 text-zinc-400 hover:text-zinc-100 rounded transition-colors"
               title="Zoom In"
             >
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setTransform(t => ({ ...t, k: Math.max(t.k * 0.85, 0.5) }))}
-              className="p-1 text-slate-400 hover:text-white rounded"
+              className="p-1 text-zinc-400 hover:text-zinc-100 rounded transition-colors"
               title="Zoom Out"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setTransform({ x: 0, y: 0, k: 1 })}
-              className="p-1 text-slate-400 hover:text-white rounded"
+              className="p-1 text-zinc-400 hover:text-zinc-100 rounded transition-colors"
               title="Reset View"
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-950 border border-slate-800 text-slate-300">
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs ${
+            currentScenario !== 'calm'
+              ? 'border-rose-900/60 bg-rose-950/30 text-rose-300'
+              : 'border-zinc-800 bg-zinc-900 text-zinc-400'
+          }`}>
             <span className={`w-2 h-2 rounded-full ${
-              currentScenario !== 'calm' ? 'bg-red-500 animate-ping' : 'bg-emerald-400'
+              currentScenario !== 'calm' ? 'bg-rose-500' : 'bg-emerald-500'
             }`} />
-            <span>{currentScenario !== 'calm' ? '🚨 THREAT CORRELATION ACTIVE' : 'ALL NODES CLEAN'}</span>
+            <span>{currentScenario !== 'calm' ? 'ANOMALY DETECTED' : 'NORMAL ENCLAVE OPERATION'}</span>
           </div>
         </div>
       </div>
 
       {/* Main Canvas Area */}
       <div 
-        className="relative h-[480px] w-full bg-[#070a10] cursor-grab active:cursor-grabbing overflow-hidden"
+        className="relative flex-1 min-h-0 w-full bg-[#07090e] cursor-grab active:cursor-grabbing overflow-hidden"
         onWheel={handleWheel}
       >
         <canvas
@@ -676,89 +843,89 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
         {/* Hover Tooltip HUD */}
         {hoveredNode && !selectedNode && (
           <div
-            className="absolute z-30 pointer-events-none p-3 rounded-xl bg-slate-950/90 border border-slate-700/80 backdrop-blur-md shadow-2xl font-mono text-xs max-w-xs transition-opacity duration-150"
+            className="absolute z-30 pointer-events-none p-3 rounded-lg bg-zinc-900/95 border border-zinc-800 backdrop-blur-md shadow-xl font-mono text-xs max-w-xs transition-opacity duration-150"
             style={{
               left: `${Math.max(20, Math.min(hoveredNode.x * transform.k + transform.x + 20, 680))}px`,
               top: `${Math.max(hoveredNode.y * transform.k + transform.y - 40, 20)}px`,
             }}
           >
-            <div className="flex items-center justify-between gap-2 pb-1.5 mb-1.5 border-b border-slate-800">
-              <span className="font-bold text-white flex items-center gap-1.5">
+            <div className="flex items-center justify-between gap-2 pb-1.5 mb-1.5 border-b border-zinc-800">
+              <span className="font-semibold text-zinc-100 flex items-center gap-1.5">
                 <span
                   className="w-2 h-2 rounded-full"
                   style={{ backgroundColor: hoveredNodeStatus?.color || '#10b981' }}
                 />
                 {hoveredNode.label}
               </span>
-              <span className="text-[10px] text-slate-400">{hoveredNode.ip}</span>
+              <span className="text-[10px] text-zinc-400">{hoveredNode.ip}</span>
             </div>
-            <div className="text-[11px] text-slate-300 mb-1">
-              Role: <b className="text-cyan-300">{hoveredNode.sublabel}</b>
+            <div className="text-[11px] text-zinc-300 mb-1">
+              Role: <span className="text-zinc-200">{hoveredNode.sublabel}</span>
             </div>
-            <div className="text-[11px] text-slate-400 mb-1">
-              Status: <b style={{ color: hoveredNodeStatus?.color || '#10b981' }}>{hoveredNodeStatus?.name}</b>
+            <div className="text-[11px] text-zinc-400 mb-1">
+              Status: <span style={{ color: hoveredNodeStatus?.color || '#10b981' }}>{hoveredNodeStatus?.name}</span>
             </div>
             {hoveredNodeStatus?.isInfected && (
-              <div className="p-1.5 bg-red-950/40 border border-red-500/30 rounded text-red-300 text-[10px] mt-1.5">
-                ⚠️ {hoveredNodeStatus.description}
+              <div className="p-1.5 bg-rose-950/40 border border-rose-800/40 rounded text-rose-300 text-[10px] mt-1.5">
+                {hoveredNodeStatus.description}
               </div>
             )}
-            <div className="text-[10px] text-slate-500 mt-2 text-right">
-              👉 Click node for detailed logs
+            <div className="text-[10px] text-zinc-400 mt-2 text-right">
+              Click node for forensic trace
             </div>
           </div>
         )}
 
         {/* Legend Overlay at Bottom-Left */}
-        <div className="absolute bottom-4 left-4 z-20 p-2.5 rounded-xl bg-slate-950/85 border border-slate-800/80 backdrop-blur-md font-mono text-[11px] space-y-1.5 shadow-lg">
+        <div className="absolute bottom-4 left-4 z-20 p-2.5 rounded-lg bg-zinc-950/90 border border-zinc-800 font-mono text-[11px] space-y-1.5 shadow-md">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-            <span className="text-slate-300">Clean / Benign Node</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span className="text-zinc-400">Normal Monitored Node</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-            <span className="text-red-300">Compromised / Malware Active</span>
+            <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+            <span className="text-rose-400">Compromised Node</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-            <span className="text-amber-300">Anomalous Transit / Gateway</span>
+            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+            <span className="text-amber-400">Anomalous Transit / Gateway</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
-            <span className="text-cyan-300">Flowing Packet Telemetry</span>
+            <span className="w-2 h-2 rounded-full bg-sky-400"></span>
+            <span className="text-zinc-400">Simplex Diode Bridge Flow</span>
           </div>
         </div>
       </div>
 
       {/* Detailed Node Inspection Drawer (On Node Click) */}
       {selectedNode && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative font-mono text-xs">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl max-w-2xl w-full p-5 shadow-2xl relative font-mono text-xs">
             {/* Modal Header */}
-            <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800">
               <div className="flex items-center gap-3">
                 <div
-                  className="p-2 rounded-xl border"
+                  className="p-2 rounded-lg border"
                   style={{
-                    backgroundColor: `${activeNodeStatus?.color}20`,
-                    borderColor: `${activeNodeStatus?.color}60`,
+                    backgroundColor: `${activeNodeStatus?.color}15`,
+                    borderColor: `${activeNodeStatus?.color}30`,
                     color: activeNodeStatus?.color,
                   }}
                 >
                   {activeNodeStatus?.isInfected ? <ShieldAlert className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
                 </div>
                 <div>
-                  <h4 className="text-base font-bold text-white flex items-center gap-2">
+                  <h4 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                     {selectedNode.label}
-                    <span className="text-xs text-slate-400 font-normal">[{selectedNode.ip}]</span>
+                    <span className="text-xs text-zinc-400 font-normal">[{selectedNode.ip}]</span>
                   </h4>
-                  <p className="text-xs text-slate-400">{selectedNode.sublabel} · Zone: {selectedNode.zone.toUpperCase()}</p>
+                  <p className="text-xs text-zinc-400">{selectedNode.sublabel} · Zone: {selectedNode.zone.toUpperCase()}</p>
                 </div>
               </div>
 
               <button
                 onClick={() => setSelectedNode(null)}
-                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all"
+                className="p-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-100 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -766,44 +933,44 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
 
             {/* Status Alert Banner */}
             <div
-              className="p-3.5 rounded-xl border mb-4"
+              className="p-3 rounded-lg border mb-3"
               style={{
-                backgroundColor: `${activeNodeStatus?.color}15`,
-                borderColor: `${activeNodeStatus?.color}40`,
+                backgroundColor: `${activeNodeStatus?.color}10`,
+                borderColor: `${activeNodeStatus?.color}30`,
               }}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="font-bold uppercase tracking-wider" style={{ color: activeNodeStatus?.color }}>
+                <span className="font-semibold uppercase tracking-wider text-xs" style={{ color: activeNodeStatus?.color }}>
                   {activeNodeStatus?.name}
                 </span>
                 {activeNodeStatus?.cve && (
-                  <span className="px-2 py-0.5 rounded bg-black/40 text-red-300 text-[10px] border border-red-500/30">
+                  <span className="px-1.5 py-0.5 rounded bg-black/40 text-rose-300 text-[10px] border border-rose-800/40">
                     {activeNodeStatus.cve}
                   </span>
                 )}
               </div>
-              <p className="text-slate-300 text-[11px] leading-relaxed">
+              <p className="text-zinc-300 text-[11px] leading-relaxed">
                 {activeNodeStatus?.description}
               </p>
             </div>
 
             {/* Diagnostic Metrics Grid */}
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
-                <span className="text-slate-400 text-[10px]">CURRENT TRAFFIC RATE</span>
-                <div className="text-sm font-bold text-white mt-1">
+            <div className="grid grid-cols-3 gap-2.5 mb-3">
+              <div className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800">
+                <span className="text-zinc-400 text-[10px] block">TRAFFIC RATE</span>
+                <div className="text-xs font-semibold text-zinc-200 mt-1">
                   {activeNodeStatus?.rate || selectedNode.normalRate}
                 </div>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
-                <span className="text-slate-400 text-[10px]">DOMINANT ATTRIBUTION</span>
-                <div className="text-sm font-bold text-amber-400 mt-1">
-                  {activeNodeStatus?.dominantChannel || 'None (Calm)'}
+              <div className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800">
+                <span className="text-zinc-400 text-[10px] block">ATTRIBUTION CHANNEL</span>
+                <div className="text-xs font-semibold text-amber-400 mt-1">
+                  {activeNodeStatus?.dominantChannel || 'None (Benign)'}
                 </div>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
-                <span className="text-slate-400 text-[10px]">ANOMALY SCORE (PEAK)</span>
-                <div className="text-sm font-bold text-cyan-400 mt-1">
+              <div className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800">
+                <span className="text-zinc-400 text-[10px] block">ANOMALY SCORE (PEAK)</span>
+                <div className="text-xs font-semibold text-sky-400 mt-1">
                   {activeNodeStatus?.peakScore || score.toFixed(2)} / τ = {tau.toFixed(2)}
                 </div>
               </div>
@@ -811,44 +978,46 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
 
             {/* Live Packet Tail for this Node */}
             <div>
-              <span className="text-slate-400 text-xs font-semibold mb-2 block">
-                RECENT PACKET TRACE &amp; TELEMETRY FRAMES
+              <span className="text-zinc-400 text-[11px] font-medium mb-1.5 block">
+                RECENT OBSERVED TELEMETRY FRAMES
               </span>
-              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 max-h-40 overflow-y-auto">
-                <div className="text-slate-500 text-[10px] border-b border-slate-900 pb-1">
-                  TIMESTAMP | SRC → DST | PROTOCOL | PAYLOAD SIZE | ENTROPY | STATUS
+              <div className="p-2.5 bg-zinc-950 rounded-lg border border-zinc-800 text-[11px] text-zinc-300 space-y-1 max-h-36 overflow-y-auto">
+                <div className="text-zinc-400 text-[10px] border-b border-zinc-850 pb-1">
+                  TIMESTAMP | SRC → DST | PROTOCOL | PAYLOAD | ENTROPY | STATUS
                 </div>
-                <div className="text-emerald-400">
-                  T-0.4s &nbsp;| {selectedNode.ip}:4840 → 10.0.1.1:9999 | UDP | 120 B | H=3.42 bits | VERIFIED BENIGN
-                </div>
-                {activeNodeStatus?.isInfected ? (
-                  <>
-                    <div className="text-red-400 font-bold bg-red-950/20 px-1 py-0.5 rounded">
-                      T-0.2s &nbsp;| {selectedNode.ip}:9999 → 10.0.1.1:9999 | UDP | 1400 B | H=7.82 bits | 🚨 ANOMALY BREACH
+                {activeNodeStatus?.traces && activeNodeStatus.traces.length > 0 ? (
+                  activeNodeStatus.traces.map((traceLine, tIdx) => (
+                    <div 
+                      key={tIdx} 
+                      className="px-1 py-0.5 rounded text-rose-300 bg-rose-950/20 font-mono"
+                    >
+                      {traceLine}
                     </div>
-                    <div className="text-red-400 font-bold bg-red-950/20 px-1 py-0.5 rounded">
-                      T-0.1s &nbsp;| {selectedNode.ip}:9999 → 10.0.1.1:9999 | UDP | 1400 B | H=7.85 bits | 🚨 PERSISTENT ATTACK
+                  ))
+                ) : (
+                  <>
+                    <div className="text-zinc-400">
+                      T-0.4s &nbsp;| {selectedNode.ip}:4840 → 10.0.1.1:9999 | UDP | 120 B | H=3.42 bits | BENIGN_MANIFOLD
+                    </div>
+                    <div className="text-zinc-400">
+                      T-0.1s &nbsp;| {selectedNode.ip}:4840 → 10.0.1.1:9999 | UDP | 96 B  | H=3.38 bits | BENIGN_MANIFOLD
                     </div>
                   </>
-                ) : (
-                  <div className="text-slate-400">
-                    T-0.1s &nbsp;| {selectedNode.ip}:4840 → 10.0.1.1:9999 | UDP | 96 B  | H=3.38 bits | VERIFIED BENIGN
-                  </div>
                 )}
               </div>
             </div>
 
             {/* Air-Gap Guarantee Note */}
-            <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-              <span className="flex items-center gap-1.5 text-emerald-400">
-                <Lock className="w-3.5 h-3.5" />
-                Hardware Air-Gap: Simplex laser guarantees zero inbound payload reflection.
+            <div className="mt-3 pt-2.5 border-t border-zinc-800 flex items-center justify-between text-[11px] text-zinc-400">
+              <span className="flex items-center gap-1.5 text-zinc-400">
+                <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                Physical diode guarantees zero inbound payload reflection into Zone A.
               </span>
               <button
                 onClick={() => setSelectedNode(null)}
-                className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+                className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-md transition-colors"
               >
-                Close Logs
+                Close
               </button>
             </div>
           </div>

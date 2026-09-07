@@ -28,8 +28,11 @@ from features.extractor import Packet
 from features.windowing import AlertEvent, LiveFeeder
 from models.njode import NJODE
 from simulation.attacks.c2_beacon import c2_beacon_stream
+from simulation.attacks.ddos_flood import ddos_flood_stream
 from simulation.attacks.dga_tunnel import dga_tunnel_stream
 from simulation.attacks.exfil_burst import exfil_burst_stream
+from simulation.attacks.portscan import portscan_stream
+from simulation.attacks.tls_c2 import tls_c2_stream
 from simulation.benign.telemetry import telemetry_stream
 from simulation.benign.web_sync import web_sync_stream
 
@@ -38,7 +41,11 @@ ATTACK_FACTORIES = {
     "c2_beacon": lambda dur, seed, t0: c2_beacon_stream(duration_s=dur, seed=seed, t0=t0, period=2.5, jitter=0.2),
     "exfil_burst": lambda dur, seed, t0: exfil_burst_stream(duration_s=dur, seed=seed, t0=t0, gap_mean=0.015, pkt_size=1400),
     "dga_tunnel": lambda dur, seed, t0: dga_tunnel_stream(duration_s=dur, seed=seed, t0=t0),
+    "ddos_flood": lambda dur, seed, t0: ddos_flood_stream(duration_s=dur, seed=seed, t0=t0, pkt_rate=200.0),
+    "tls_c2": lambda dur, seed, t0: tls_c2_stream(duration_s=dur, seed=seed, t0=t0, period=2.5, jitter=0.15),
+    "portscan": lambda dur, seed, t0: portscan_stream(duration_s=dur, seed=seed, t0=t0, scan_rate=60.0),
 }
+
 
 
 def build_continuous_campaign(

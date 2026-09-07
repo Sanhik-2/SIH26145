@@ -20,8 +20,11 @@ from features.extractor import FeatureStream, featurize
 from features.windowing import LiveFeeder, Windower
 from models.njode import NJODE
 from simulation.attacks.c2_beacon import c2_beacon_stream
+from simulation.attacks.ddos_flood import ddos_flood_stream
 from simulation.attacks.dga_tunnel import dga_tunnel_stream
 from simulation.attacks.exfil_burst import exfil_burst_stream
+from simulation.attacks.portscan import portscan_stream
+from simulation.attacks.tls_c2 import tls_c2_stream
 from simulation.benign.telemetry import telemetry_stream
 from simulation.benign.web_sync import web_sync_stream
 
@@ -59,7 +62,8 @@ def mixed_window_stream(win, benign_seed, attack_fn, attack_seed):
     """Benign telemetry + attack packets sharing one 10 s span — what the tap would see."""
     benign_tel = telemetry_stream(duration_s=WINDOW_S, seed=benign_seed)
     attack = attack_fn(duration_s=WINDOW_S, seed=attack_seed)
-    return win, featurize(sorted(benign_tel + attack, key=lambda p: p.t))
+    packets = sorted(benign_tel + attack, key=lambda p: p.t)
+    return win, featurize(packets), packets
 
 
 def main():
@@ -75,7 +79,7 @@ def main():
     fpr_tel = trim(featurize(telemetry_stream(duration_s=N_FPR * WINDOW_S, seed=13)), N_FPR * WINDOW_S)
     fpr_sync = trim(featurize(web_sync_stream(duration_s=N_FPR * WINDOW_S, seed=14)), N_FPR * WINDOW_S)
 
-    model = NJODE(d_x=4, d_h=10)
+    model = NJODE(d_x=5, d_h=10)
     win = Windower(model, window_s=WINDOW_S)
     win.fit_standardizer(train_tel, train_sync)
 
@@ -93,10 +97,14 @@ def main():
     peak_benign = _peak_scores(s_b)
 
     attacks = {
-        "c2_beacon": (c2_beacon_stream, ("tunnel/encrypted-c2", "beacon/recon")),
-        "exfil_burst": (exfil_burst_stream, ("exfil-flood",)),
-        "dga_tunnel": (dga_tunnel_stream, ("tunnel/encrypted-c2",)),
+        "c2_beacon": (c2_beacon_stream, ("c2_beacon", "beacon/recon", "tunnel/encrypted-c2")),
+        "exfil_burst": (exfil_burst_stream, ("exfil_burst", "exfil-flood")),
+        "dga_tunnel": (dga_tunnel_stream, ("dga_tunnel", "tunnel/encrypted-c2")),
+        "ddos_flood": (ddos_flood_stream, ("ddos_flood", "volumetric-ddos", "exfil-flood")),
+        "tls_c2": (tls_c2_stream, ("tls_c2", "c2_beacon", "beacon/recon")),
+        "portscan": (portscan_stream, ("portscan", "beacon/recon", "exfil-flood")),
     }
+
 
     print("[4/5] attack windows & channel attribution...")
     feeder = LiveFeeder(model, window_s=WINDOW_S, stride_s=2.0)
@@ -105,7 +113,7 @@ def main():
         exp_tuple = exp_threat if isinstance(exp_threat, tuple) else (exp_threat,)
         peaks, det, n_flag, n_obs, correct_attr = [], 0, 0, 0, 0
         for i in range(N_ATTACK):
-            _, stream = mixed_window_stream(win, 1000 + i, fn, 2000 + i)
+            _, stream, pkts = mixed_window_stream(win, 1000 + i, fn, 2000 + i)
             v_a, m_a, t_a = tensorset(win, stream)
             s, f = model.compute_anomaly_scores(v_a, m_a, t_a)
             p_score = _peak_scores(s)[0].item()
@@ -115,11 +123,16 @@ def main():
             n_flag += int(f.sum())
             n_obs += int((~torch.isnan(s)).sum())
 
-            # Test LiveFeeder channel attribution on this attack stream
-            alerts = list(feeder.feed_stream(stream))
+            # Test LiveFeeder channel attribution on raw packets
+            feeder.reset()
+            alerts = []
+            for p in pkts:
+                alerts.extend(feeder.ingest_packet(p))
+            alerts.extend(feeder.flush())
             for alert in alerts:
                 if alert.is_anomaly and alert.attribution:
-                    if alert.attribution["threat_type"] in exp_tuple:
+                    threat_cls = alert.threat_class or alert.attribution.get("threat_type")
+                    if threat_cls in exp_tuple:
                         correct_attr += 1
                         break
 
