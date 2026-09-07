@@ -107,3 +107,74 @@ def test_dashboard_packet_event_endpoints():
     st_resp = client.get("/api/status")
     assert st_resp.status_code == 200
     assert "packet_stats" in st_resp.json()
+    assert "nuclear_telemetry" in st_resp.json()
+
+
+def test_nuclear_scada_status_endpoint():
+    """Verify /api/nuclear/status returns valid Kudankulam Unit 1 PWR physics."""
+    client = TestClient(app)
+    resp = client.get("/api/nuclear/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert "telemetry" in data
+    vitals = data["telemetry"]
+    assert "pressure_bar" in vitals
+    assert "core_temp_c" in vitals
+    assert "coolant_flow_kgs" in vitals
+    assert "reactor_state" in vitals
+    assert vitals["pressure_bar"] > 100.0
+
+
+def test_nuclear_scada_trip_and_reset_endpoints():
+    """Verify /api/scada/trip and /api/scada/reset state transitions."""
+    client = TestClient(app)
+
+    # 1. Trip coolant pump
+    trip_resp = client.post("/api/scada/trip")
+    assert trip_resp.status_code == 200
+    trip_data = trip_resp.json()
+    assert trip_data["status"] == "PUMP_TRIPPED"
+    assert trip_data["telemetry"]["reactor_state"] == "LOSS_OF_FLOW"
+    assert trip_data["telemetry"]["coolant_flow_kgs"] < 5000.0
+
+    # 2. Reset back to nominal
+    reset_resp = client.post("/api/scada/reset")
+    assert reset_resp.status_code == 200
+    reset_data = reset_resp.json()
+    assert reset_data["status"] == "RESET_OK"
+    assert reset_data["telemetry"]["reactor_state"] == "NOMINAL_FULL_POWER"
+    assert reset_data["telemetry"]["coolant_flow_kgs"] > 15000.0
+
+
+def test_nuclear_scada_telemetry_ingestion_via_packet_event():
+    """Verify that decoded optical packets containing SCADA physics update backend state."""
+    client = TestClient(app)
+
+    scada_event = {
+        "type": "packet_transit",
+        "from": "nuclear-scada",
+        "to": "tx-diode",
+        "size": 256,
+        "feat": [0.1, 400, 5.8, 3.0, 0],
+        "threat": False,
+        "scada": {
+            "p": 156.2,
+            "tavg": 311.5,
+            "flow": 16480.0,
+            "mw": 958.0,
+            "cpu": 2.4,
+            "ram": 3.1,
+            "state": "NOMINAL_FULL_POWER"
+        }
+    }
+
+    resp = client.post("/api/packet/event", json=scada_event)
+    assert resp.status_code == 200
+
+    status_resp = client.get("/api/nuclear/status")
+    vitals = status_resp.json()["telemetry"]
+    assert vitals["pressure_bar"] == 156.2
+    assert vitals["core_temp_c"] == 311.5
+    assert vitals["coolant_flow_kgs"] == 16480.0
+

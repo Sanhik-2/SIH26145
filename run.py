@@ -33,25 +33,24 @@ def main():
         print_banner()
         print("Usage: python run.py <command> [options]\n")
         print("Commands:")
-        print("  soc          Launch the modern React SOC Full-Stack Console (Default: :8501)")
-        print("  receiver     Launch Diode Scanner AI Ingestion Engine (UDP receiver)")
-        print("  sender       Launch Air-Gapped In-Zone Traffic Generator")
-        print("  real-packet  Launch Real Packet Network Automation Engine (Optical QR Mesh)")
-        print("  qr           Launch Optical Data Diode QR Transmitter Gateway")
-        print("  scan         Launch Optical QR Scanner Receiver & AI Core")
-        print("  nuclear-node Launch Nuclear SCADA Telemetry & OS Process Sentry Node")
-        print("  nuclear-soc  Launch Air-Gapped Nuclear SCADA SOC Defense Console")
-        print("  dashboard    Launch classic Streamlit SOC Dashboard")
-        print("  campaign     Run 300s continuous campaign benchmark (saves plot & json)")
-        print("  test         Run unit and integration test suite (pytest)")
+        print("  soc              Launch modern React Full-Stack SOC Console (:8501, HTTPS, WebRTC)")
+        print("  qr               Launch Optical Data Diode QR Transmitter Gateway")
+        print("  scan             Launch Optical QR Scanner Receiver & AI Core")
+        print("  scada            Launch Nuclear SCADA Kudankulam Service (Modbus 502, HMI 8080)")
+        print("  btop             Launch Real-Time SCADA Terminal Resource Monitor (cgroups HUD)")
+        print("  redteam <attack> Launch Red-Team Cyber Warfare Attacks (NTRO PS #26145 a-f)")
+        print("  nuclear-soc      Launch Air-Gapped Nuclear SCADA SOC Defense Console")
+        print("  real-packet      Launch Real Packet Network Automation Engine (Optical QR Mesh)")
+        print("  nuclear-node     Launch Nuclear SCADA Telemetry & OS Process Sentry Node")
+        print("  test             Run unit and integration test suite (pytest)")
         print("\nExamples:")
         print("  python run.py soc                                                # Launch React SOC Dashboard")
         print("  python run.py qr                                                 # Display Optical QR Diode Stream on screen")
-        print("  python run.py scan --phone 192.168.1.5                           # Decode QR using Phone Camera (IP Webcam)")
-        print("  python run.py scan --camera 0                                    # Decode QR using Built-in/USB Webcam")
-        print("  python run.py real-packet --gui                                  # Real packet network + Optical QR window")
-        print("  python run.py real-packet --source camera --phone 192.168.1.5   # Real packet AI ingest from Phone Camera")
-        print("  python run.py nuclear-soc --phone 192.168.1.5                    # Air-gapped Nuclear SOC via Phone Camera")
+        print("  python run.py scada                                              # Launch Kudankulam SCADA node (Ports 502, 8080)")
+        print("  python run.py btop                                               # Terminal HUD monitoring CPU/RAM & NPPAD")
+        print("  python run.py redteam ddos                                       # Launch Threat [a] Volumetric Flood")
+        print("  python run.py redteam modbus                                     # Inject Modbus Pump Trip (Trips Coolant Flow)")
+        print("  python run.py scan --phone 10.1.45.X                             # Decode QR using Phone Camera")
         print("  python run.py test                                               # Run full pytest suite")
         sys.exit(0)
 
@@ -78,6 +77,18 @@ def main():
     elif cmd in ("nuclear-node", "scada-node", "node"):
         node_script = REPO_ROOT / "diode" / "nuclear_node.py"
         subprocess.run([sys.executable, str(node_script)] + extra_args)
+
+    elif cmd in ("nuclear-service", "scada", "scada-service"):
+        svc_script = REPO_ROOT / "diode" / "nuclear_service.py"
+        subprocess.run([sys.executable, str(svc_script)] + extra_args)
+
+    elif cmd in ("btop", "monitor", "hud"):
+        btop_script = REPO_ROOT / "diode" / "scada_btop.py"
+        subprocess.run([sys.executable, str(btop_script)] + extra_args)
+
+    elif cmd in ("redteam", "attack", "offensive"):
+        red_script = REPO_ROOT / "diode" / "redteam_arch.py"
+        subprocess.run([sys.executable, str(red_script)] + extra_args)
 
     elif cmd in ("nuclear-soc", "soc-gui"):
         soc_script = REPO_ROOT / "diode" / "nuclear_soc.py"

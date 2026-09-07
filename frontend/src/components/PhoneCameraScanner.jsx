@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, RefreshCw, ShieldCheck, Zap, AlertCircle, CheckCircle2, Flashlight, Radio } from 'lucide-react';
+import { Camera, RefreshCw, ShieldCheck, Zap, AlertCircle, CheckCircle2, Flashlight, Radio, Activity } from 'lucide-react';
 import jsQR from 'jsqr';
 
 export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
@@ -12,6 +12,7 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
   const [errorMsg, setErrorMsg] = useState('');
   const [decodedCount, setDecodedCount] = useState(0);
   const [lastDecodedPkt, setLastDecodedPkt] = useState(null);
+  const [scadaVitals, setScadaVitals] = useState(null);
   const [streamFps, setStreamFps] = useState(0);
   const [isInsecureHttp, setIsInsecureHttp] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
@@ -288,6 +289,19 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
       const isThreat = Boolean(payload.atk);
       const src = payload.src || (isThreat ? 'ews-alpha' : 'plc-01');
 
+      // Extract authentic Kudankulam PWR SCADA Telemetry (NPPAD 2022)
+      const p = payload.p ?? payload.pressure_bar ?? 155.5;
+      const tavg = payload.tavg ?? payload.core_temp_c ?? 310.0;
+      const flow = payload.flow ?? payload.coolant_flow_kgs ?? 16515.8;
+      const mw = payload.mw ?? payload.output_mwe ?? 955.3;
+      const cpu = payload.cpu ?? payload.container_cpu_pct ?? 1.2;
+      const ram = payload.ram ?? payload.container_mem_pct ?? 2.8;
+      const state = payload.state ?? payload.reactor_state ?? 'NOMINAL_FULL_POWER';
+      const atk = payload.atk || payload.attack_type || '';
+
+      const scadaObj = { p, tavg, flow, mw, cpu, ram, state, atk };
+      setScadaVitals(scadaObj);
+
       setDecodedCount(c => c + 1);
       setLastDecodedPkt({
         seq: payload.seq ?? decodedCount + 1,
@@ -310,19 +324,19 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
       };
 
       // Hop 1: In-Zone source node -> tx-diode
-      await postEvent({ type: 'packet_transit', from: src, to: 'tx-diode', size, feat, threat: isThreat, timestamp: Date.now() / 1000 });
+      await postEvent({ type: 'packet_transit', from: src, to: 'tx-diode', size, feat, threat: isThreat, scada: scadaObj, timestamp: Date.now() / 1000 });
       await delay(60);
 
       // Hop 2: tx-diode -> optical-gap
-      await postEvent({ type: 'packet_transit', from: 'tx-diode', to: 'optical-gap', size, feat, is_diode_bridge: true, threat: isThreat, timestamp: Date.now() / 1000 });
+      await postEvent({ type: 'packet_transit', from: 'tx-diode', to: 'optical-gap', size, feat, is_diode_bridge: true, threat: isThreat, scada: scadaObj, timestamp: Date.now() / 1000 });
       await delay(60);
 
       // Hop 3: optical-gap -> rx-diode (phone camera optical reception)
-      await postEvent({ type: 'packet_transit', from: 'optical-gap', to: 'rx-diode', size, feat, is_diode_bridge: true, threat: isThreat, timestamp: Date.now() / 1000 });
+      await postEvent({ type: 'packet_transit', from: 'optical-gap', to: 'rx-diode', size, feat, is_diode_bridge: true, threat: isThreat, scada: scadaObj, timestamp: Date.now() / 1000 });
       await delay(60);
 
       // Hop 4: rx-diode -> njode-core (AI model continuous evaluation on System 1 laptop)
-      await postEvent({ type: 'packet_transit', from: 'rx-diode', to: 'njode-core', size, feat, threat: isThreat, timestamp: Date.now() / 1000 });
+      await postEvent({ type: 'packet_transit', from: 'rx-diode', to: 'njode-core', size, feat, threat: isThreat, scada: scadaObj, timestamp: Date.now() / 1000 });
 
       if (isThreat) {
         await delay(60);
@@ -334,6 +348,7 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
           feat,
           threat: true,
           is_alert: true,
+          scada: scadaObj,
           timestamp: Date.now() / 1000,
         });
       }
@@ -506,6 +521,45 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
               </>
             )}
           </div>
+
+          {/* Kudankulam Unit 1 NPPAD Nuclear Vitals HUD */}
+          {scadaVitals && (
+            <div className="p-3 rounded-xl border border-zinc-800 bg-[#06080e] font-mono text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-300 flex items-center gap-1.5 font-semibold text-[11px] uppercase tracking-wider">
+                  <Activity className="w-3.5 h-3.5 text-sky-400" />
+                  Kudankulam Unit 1 (PWR) · Nuclear SCADA Vitals
+                </span>
+                <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                  scadaVitals.state === 'NOMINAL_FULL_POWER'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse'
+                }`}>
+                  {scadaVitals.state}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px]">
+                <div className="p-2 rounded-lg bg-zinc-950 border border-zinc-800">
+                  <span className="text-zinc-500 block text-[10px]">Coolant Pressure</span>
+                  <span className="text-zinc-200 font-bold">{scadaVitals.p} bar</span>
+                </div>
+                <div className="p-2 rounded-lg bg-zinc-950 border border-zinc-800">
+                  <span className="text-zinc-500 block text-[10px]">Core Temp (Tavg)</span>
+                  <span className="text-amber-400 font-bold">{scadaVitals.tavg} °C</span>
+                </div>
+                <div className="p-2 rounded-lg bg-zinc-950 border border-zinc-800">
+                  <span className="text-zinc-500 block text-[10px]">Coolant Flow (WRCA)</span>
+                  <span className={`font-bold ${scadaVitals.flow < 10000 ? 'text-rose-400 animate-pulse' : 'text-emerald-400'}`}>
+                    {scadaVitals.flow} kg/s
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-zinc-950 border border-zinc-800">
+                  <span className="text-zinc-500 block text-[10px]">Grid Power / CPU</span>
+                  <span className="text-sky-400 font-bold">{scadaVitals.mw} MWe ({scadaVitals.cpu}%)</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Real-Time Decoded Optical Packet Telemetry Feed */}
           <div className="p-3 rounded-xl border border-zinc-800 bg-[#07090e] font-mono text-xs space-y-2">

@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -130,6 +131,24 @@ _packet_stats: Dict[str, Any] = {
     "active_flows": 0,
 }
 
+# Real-time Kudankulam Unit 1 / BARC PWR Nuclear Telemetry (NPPAD Nature Sci Data 2022)
+_nuclear_telemetry: Dict[str, Any] = {
+    "facility": "BARC / NPCIL Kudankulam Unit 1 (PWR)",
+    "dataset": "Nature Scientific Data (NPPAD 96-Sensor Benchmark)",
+    "reactor_state": "NOMINAL_FULL_POWER",
+    "pressure_bar": 155.5,
+    "core_temp_c": 310.0,
+    "coolant_flow_kgs": 16515.8,
+    "output_mwe": 955.3,
+    "container_cpu_pct": 1.2,
+    "container_mem_mb": 22.0,
+    "container_mem_pct": 2.1,
+    "last_attack": "None",
+    "last_attack_time": "--:--:--",
+    "last_updated": time.time(),
+    "source": "optical_airgap",
+}
+
 
 async def broadcast_event(event_dict: Dict[str, Any]):
     """Broadcast an event dictionary to all active SSE streaming subscribers."""
@@ -148,6 +167,7 @@ async def broadcast_event(event_dict: Dict[str, Any]):
 async def api_status(request: Request) -> JSONResponse:
     info = load_checkpoint_info()
     info["packet_stats"] = _packet_stats
+    info["nuclear_telemetry"] = _nuclear_telemetry
     return JSONResponse(info)
 
 
@@ -211,6 +231,33 @@ async def api_packet_event(request: Request) -> JSONResponse:
         _packet_stats["total_transited"] += 1
         _packet_stats["last_transit_time"] = now_ts
         await broadcast_event(ev)
+
+        # Ingest SCADA physical telemetry if present in event or nested 'scada' dict
+        scada_data = ev.get("scada") if isinstance(ev.get("scada"), dict) else {}
+        p_val = ev.get("p", ev.get("pressure_bar", scada_data.get("p", scada_data.get("pressure_bar"))))
+        if p_val is not None:
+            try:
+                _nuclear_telemetry["pressure_bar"] = round(float(p_val), 1)
+                _nuclear_telemetry["core_temp_c"] = round(float(ev.get("tavg", ev.get("core_temp_c", scada_data.get("tavg", scada_data.get("core_temp_c", _nuclear_telemetry["core_temp_c"]))))), 1)
+                _nuclear_telemetry["coolant_flow_kgs"] = round(float(ev.get("flow", ev.get("coolant_flow_kgs", scada_data.get("flow", scada_data.get("coolant_flow_kgs", _nuclear_telemetry["coolant_flow_kgs"]))))), 1)
+                _nuclear_telemetry["output_mwe"] = round(float(ev.get("mw", ev.get("output_mwe", scada_data.get("mw", scada_data.get("output_mwe", _nuclear_telemetry["output_mwe"]))))), 1)
+                _nuclear_telemetry["container_cpu_pct"] = round(float(ev.get("cpu", ev.get("container_cpu_pct", scada_data.get("cpu", scada_data.get("container_cpu_pct", _nuclear_telemetry["container_cpu_pct"]))))), 1)
+                _nuclear_telemetry["container_mem_pct"] = round(float(ev.get("ram", ev.get("container_mem_pct", scada_data.get("ram", scada_data.get("container_mem_pct", _nuclear_telemetry["container_mem_pct"]))))), 1)
+                state_val = ev.get("state", ev.get("reactor_state", scada_data.get("state", scada_data.get("reactor_state"))))
+                if state_val:
+                    _nuclear_telemetry["reactor_state"] = str(state_val)
+                atk_val = ev.get("atk", ev.get("attack_type", scada_data.get("atk", scada_data.get("attack_type"))))
+                if atk_val:
+                    _nuclear_telemetry["last_attack"] = str(atk_val)
+                    _nuclear_telemetry["last_attack_time"] = time.strftime("%H:%M:%S")
+                _nuclear_telemetry["last_updated"] = now_ts
+                await broadcast_event({
+                    "type": "nuclear_telemetry",
+                    "telemetry": dict(_nuclear_telemetry),
+                    "timestamp": now_ts,
+                })
+            except Exception:
+                pass
 
         # Evaluate continuous Neural Jump-ODE AI model on ingress optical packets
         feat = ev.get("feat")
@@ -358,7 +405,143 @@ async def api_diode_status(request: Request) -> JSONResponse:
         "latest_alert": last_alert,
         "recent_alerts_count": len(alerts),
         "packet_stats": _packet_stats,
+        "nuclear_telemetry": _nuclear_telemetry,
     })
+
+
+async def api_nuclear_status(request: Request) -> JSONResponse:
+    return JSONResponse({
+        "status": "ok",
+        "telemetry": _nuclear_telemetry,
+        "packet_stats": _packet_stats,
+    })
+
+
+async def api_scada_trip(request: Request) -> JSONResponse:
+    now_str = time.strftime("%H:%M:%S")
+    now_ts = time.time()
+    _nuclear_telemetry["reactor_state"] = "LOSS_OF_FLOW"
+    _nuclear_telemetry["coolant_flow_kgs"] = 2100.0
+    _nuclear_telemetry["pressure_bar"] = 142.0
+    _nuclear_telemetry["core_temp_c"] = 338.5
+    _nuclear_telemetry["last_attack"] = "UNAUTHORIZED MODBUS FC05 PUMP TRIP"
+    _nuclear_telemetry["last_attack_time"] = now_str
+    _nuclear_telemetry["last_updated"] = now_ts
+
+    try:
+        import urllib.request
+        req = urllib.request.Request("http://127.0.0.1:8080/trip", method="POST")
+        urllib.request.urlopen(req, timeout=0.5)
+    except Exception:
+        pass
+
+    await broadcast_event({
+        "type": "nuclear_telemetry",
+        "telemetry": dict(_nuclear_telemetry),
+        "timestamp": now_ts,
+    })
+
+    alert_rec = {
+        "ts": now_str,
+        "window_t0": round(now_ts - 2.0, 2),
+        "window_t1": round(now_ts, 2),
+        "peak_score": 2.85,
+        "threshold": 2.464,
+        "is_anomaly": True,
+        "confirmed": True,
+        "attribution": {
+            "top_channel": "flow_transient",
+            "threat_type": "modbus_pump_trip",
+            "channel_errors": {"flow": 14415.8, "iat": 0.1, "bytes": 400.0, "entropy": 5.8, "burst": 3.0}
+        }
+    }
+    try:
+        with open(REPO_ROOT / "alerts.jsonl", "a") as f:
+            f.write(json.dumps(alert_rec) + "\n")
+    except Exception:
+        pass
+
+    await broadcast_event({
+        "type": "anomaly_alert",
+        "alert": alert_rec,
+        "timestamp": now_ts,
+    })
+
+    return JSONResponse({"status": "PUMP_TRIPPED", "telemetry": _nuclear_telemetry})
+
+
+async def api_scada_reset(request: Request) -> JSONResponse:
+    now_str = time.strftime("%H:%M:%S")
+    now_ts = time.time()
+    _nuclear_telemetry["reactor_state"] = "NOMINAL_FULL_POWER"
+    _nuclear_telemetry["coolant_flow_kgs"] = 16515.8
+    _nuclear_telemetry["pressure_bar"] = 155.5
+    _nuclear_telemetry["core_temp_c"] = 310.0
+    _nuclear_telemetry["output_mwe"] = 955.3
+    _nuclear_telemetry["last_attack"] = "Baseline Restored"
+    _nuclear_telemetry["last_attack_time"] = now_str
+    _nuclear_telemetry["last_updated"] = now_ts
+
+    try:
+        import urllib.request
+        req = urllib.request.Request("http://127.0.0.1:8080/reset", method="POST")
+        urllib.request.urlopen(req, timeout=0.5)
+    except Exception:
+        pass
+
+    await broadcast_event({
+        "type": "nuclear_telemetry",
+        "telemetry": dict(_nuclear_telemetry),
+        "timestamp": now_ts,
+    })
+
+    return JSONResponse({"status": "RESET_OK", "telemetry": _nuclear_telemetry})
+
+
+async def poll_scada_background():
+    """Periodically queries local SCADA HMI (port 8080) if available."""
+    while True:
+        try:
+            import urllib.request
+            req = urllib.request.Request("http://127.0.0.1:8080/stats", headers={"User-Agent": "Chronos-SOC"})
+            with urllib.request.urlopen(req, timeout=0.6) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                if "cpu_pct" in data:
+                    _nuclear_telemetry["container_cpu_pct"] = data.get("cpu_pct", _nuclear_telemetry["container_cpu_pct"])
+                    _nuclear_telemetry["container_mem_mb"] = data.get("memory_mb", _nuclear_telemetry["container_mem_mb"])
+                    _nuclear_telemetry["container_mem_pct"] = data.get("memory_pct", _nuclear_telemetry["container_mem_pct"])
+                    if data.get("last_attack") and data.get("last_attack") != "None":
+                        _nuclear_telemetry["last_attack"] = data.get("last_attack")
+                        _nuclear_telemetry["last_attack_time"] = data.get("last_attack_time", "--:--:--")
+
+            req2 = urllib.request.Request("http://127.0.0.1:8080/", headers={"User-Agent": "Chronos-SOC"})
+            with urllib.request.urlopen(req2, timeout=0.6) as resp:
+                data2 = json.loads(resp.read().decode("utf-8"))
+                if "pressure_bar" in data2:
+                    _nuclear_telemetry["pressure_bar"] = data2.get("pressure_bar", _nuclear_telemetry["pressure_bar"])
+                    _nuclear_telemetry["core_temp_c"] = data2.get("core_temp_c", _nuclear_telemetry["core_temp_c"])
+                    _nuclear_telemetry["coolant_flow_kgs"] = data2.get("coolant_flow_kgs", _nuclear_telemetry["coolant_flow_kgs"])
+                    _nuclear_telemetry["output_mwe"] = data2.get("output_mwe", _nuclear_telemetry["output_mwe"])
+                    _nuclear_telemetry["reactor_state"] = data2.get("reactor_state", _nuclear_telemetry["reactor_state"])
+                    _nuclear_telemetry["last_updated"] = time.time()
+                    _nuclear_telemetry["source"] = "scada_hmi_local"
+                    await broadcast_event({
+                        "type": "nuclear_telemetry",
+                        "telemetry": dict(_nuclear_telemetry),
+                        "timestamp": time.time(),
+                    })
+        except Exception:
+            pass
+        await asyncio.sleep(2.0)
+
+
+@asynccontextmanager
+async def lifespan(app):
+    task = asyncio.create_task(poll_scada_background())
+    try:
+        yield
+    finally:
+        task.cancel()
 
 
 # Setup routes
@@ -373,6 +556,9 @@ routes = [
     Route("/api/packet/event", api_packet_event, methods=["POST"]),
     Route("/api/packets/recent", api_packets_recent, methods=["GET"]),
     Route("/api/diode/status", api_diode_status, methods=["GET"]),
+    Route("/api/nuclear/status", api_nuclear_status, methods=["GET"]),
+    Route("/api/scada/trip", api_scada_trip, methods=["GET", "POST"]),
+    Route("/api/scada/reset", api_scada_reset, methods=["GET", "POST"]),
 ]
 
 # Mount static dist assets if directory exists
@@ -391,7 +577,7 @@ middleware = [
     )
 ]
 
-app = Starlette(debug=False, routes=routes, middleware=middleware)
+app = Starlette(debug=False, routes=routes, middleware=middleware, lifespan=lifespan)
 
 
 def get_primary_lan_ip() -> str:

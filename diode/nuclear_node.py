@@ -86,15 +86,33 @@ if not normal_records:
 if not loca_records:
     loca_records = [fallback_record]
 
-# Monitored processes for live host breach detection
+# Monitored processes for live host breach detection (Cross-Platform Windows & Linux)
 WATCHED_APPS = {
+    # Windows binaries
     "notepad.exe": "Notepad (Text Editor)",
     "calc.exe": "Windows Calculator",
     "calculatorapp.exe": "Windows Calculator",
     "cmd.exe": "Command Prompt (CMD)",
     "powershell.exe": "PowerShell Console",
     "mspaint.exe": "MS Paint",
-    "taskmgr.exe": "Task Manager"
+    "taskmgr.exe": "Task Manager",
+    "python.exe": "Python Execution Agent",
+    # Linux & UNIX binaries
+    "notepad": "Notepad (Text Editor)",
+    "calc": "Calculator Tool",
+    "gnome-calculator": "GNOME Calculator",
+    "kcalc": "KDE Calculator",
+    "gedit": "GEdit Text Editor",
+    "kate": "Kate Text Editor",
+    "nano": "Nano Editor",
+    "vim": "Vim Editor",
+    "bash": "Bash Shell (Remote Egress)",
+    "sh": "POSIX Shell Execution",
+    "zsh": "Zsh Shell Execution",
+    "python": "Python Process",
+    "python3": "Python3 Sentry Agent",
+    "wireshark": "Wireshark Packet Capture",
+    "nmap": "Nmap Network Scanner"
 }
 
 current_mode = "NORMAL"
