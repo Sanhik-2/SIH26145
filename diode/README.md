@@ -1,44 +1,79 @@
-# CHRONOS: Unidirectional Optical Data Diode & SOC Dashboard
-
-This module implements the **hardware-less optical data diode transport layer** and **real-time air-gapped monitoring enclave** for **SIH 2026 Problem Statement ID: 26145 (NTRO)**.
+# CHRONOS: Air-Gapped Nuclear SCADA Defense & Optical Data Diode
+### Smart India Hackathon 2026 — Problem Statement ID: 26145 (NTRO)
+**Title:** AI-Based Detection of Cyber Threats in Unidirectional IP Traffic  
+**Target Asset:** BARC / NPCIL Kudankulam Unit 1 Nuclear SCADA & NLDC Power Grid Interconnect  
 
 ---
 
-## 📁 Active Scripts
+## 📌 Executive Summary: Protecting Critical Infrastructure
+
+In mission-critical operational technology (OT) such as Nuclear Power Plants and National Power Grids, safety-critical systems cannot be connected to standard IT networks. **Hardware optical data diodes** enforce strict unidirectional (simplex) isolation—allowing telemetry to egress for monitoring while **physically eliminating any return communication (ACK / feedback)**.
+
+**CHRONOS** provides a comprehensive 3-tier defense architecture:
+1. **Unidirectional Optical Data Diode:** Simplex optical egress via modulated photons. Zero physical inbound path exists, rendering remote exploitation or C2 injection physically impossible.
+2. **Continuous-Time Anomaly Scoring (NJ-ODE):** Detects covert data exfiltration, stealth C2 beacons, and DGA DNS tunnels from simplex telemetry using the 4-feature contract ($[\text{iat}, \text{bytes}, \text{entropy}, \text{burst}]$) without requiring TCP reassembly or payload decryption.
+3. **Zero-Trust Host Process Sentry:** Instantly detects newly spawned unauthorized executables (`notepad.exe`, `calc.exe`, PowerShell, or malware binaries) on the SCADA console and blasts real-time optical alert frames across the air gap in $< 350\text{ ms}$.
+
+---
+
+## 📁 Active Single-Laptop Scripts
 
 | Script | Role | Description |
 | :--- | :--- | :--- |
-| **`qr_gateway.py`** | **Optical Diode Emitter** | Central gateway listener that aggregates UDP telemetry, prints live host event logs, and renders the animated high-contrast optical QR diode on screen. |
-| **`scan_receiver.py`** | **Air-Gapped Receiver** | Uses webcam/optical sensor to read and decode the optical QR stream, displaying the live dark-mode SOC dashboard with zero physical/protocol return path. |
-| **`node_agent.py`** | **Host Node Agent** | Streams real-time host telemetry (CPU %, RAM %, process counts) and detects live application launches (`notepad.exe`, `calc.exe`, `cmd.exe`, etc.). |
-| **`chronos_soc.py`** | **Multi-Threat AI SOC** | Full threat intelligence dashboard evaluating all 6 NTRO threat classes (DDoS, C2 Beaconing, DGA, Encrypted Malware JA4, Recon, Exfiltration). |
-| **`gateway_diode.py`** | **Chromatic RGB Diode** | High-density 3-channel optical diode multiplexing telemetry across Red, Green, and Blue planes (3x data density). |
-| **`pcap_feature_extractor.py`** | **Passive Feature Extractor** | Parses raw network packets (.pcap) and extracts Inter-Arrival Time (IAT), Source-IP Shannon Entropy, JA4 hashes, and byte ratios. |
-| **`attacker_console.py`** | **Adversary Attack Console** | Interactive Red-Team cyber warfare launcher for live demonstration of the 6 NTRO cyber attacks. |
+| **[`nuclear_node.py`](nuclear_node.py)** | **Nuclear SCADA Node** | Streams authentic reactor physics (Temp, Pressure, Coolant Flow, Rods, Power, 50 Hz Grid Freq) + reads real laptop CPU/RAM + watches live process table. |
+| **[`qr_gateway.py`](qr_gateway.py)** | **Optical Diode Transmitter** | Aggregates simplex telemetry from port 9999, logs to terminal, and renders the high-contrast animated optical QR diode on screen. |
+| **[`nuclear_soc.py`](nuclear_soc.py)** | **Air-Gapped SOC Dashboard** | Industrial dark-mode defense console. Features live reactor gauges, AI anomaly score $\mathcal{S}_{\text{peak}}$ vs $\tau$, host sentry alerts, and dual Webcam / Direct Loopback modes. |
+| **[`chronos_soc.py`](chronos_soc.py)** | **Multi-Threat AI SOC** | Extended multi-threat intelligence evaluator covering all 6 NTRO threat categories. |
+| **[`pcap_feature_extractor.py`](pcap_feature_extractor.py)** | **Passive Feature Extractor** | Passive network packet featurizer for PCAP analysis (IAT, Entropy, JA4). |
+| **[`attacker_console.py`](attacker_console.py)** | **Red-Team Attack Launcher** | GUI launcher for injecting targeted cyber threats into the pipeline. |
 
 ---
 
-## 🚀 How to Run (Single-Laptop Demonstration)
+## 🚀 How to Run on a Single Laptop (3 Terminals)
 
-Open 3 terminal windows on your laptop:
+Open 3 terminal windows on your laptop side-by-side:
 
-### Terminal 1: Optical Diode Gateway
+### Terminal 1: Nuclear SCADA Telemetry & Host Sentry
+```bash
+python diode/nuclear_node.py
+```
+
+### Terminal 2: Optical Data Diode Transmitter
 ```bash
 python diode/qr_gateway.py
 ```
 
-### Terminal 2: Host Telemetry & Event Agent
+### Terminal 3: Air-Gapped Nuclear SOC Dashboard
 ```bash
-python diode/node_agent.py 1 127.0.0.1
+python diode/nuclear_soc.py
 ```
 
-### Terminal 3: Air-Gapped Receiver & SOC Dashboard
-```bash
-python diode/scan_receiver.py
-```
+> [!TIP]
+> **Single-Laptop Presentation Pro-Tip:**
+> On `nuclear_soc.py`, press **`[SPACE]`** anytime to toggle between:
+> - **Webcam Optical Mode:** Optical camera scanning from screen or phone.
+> - **Direct Simplex Loopback:** Mirrored simplex packet ingest directly on the laptop (ideal for smooth screen-sharing / projector presentations).
 
-### Live Test:
-1. Open **Notepad** or **Calculator** on your laptop.
-2. Terminal 2 immediately detects the process launch.
-3. Terminal 1 encodes the event into the optical QR diode.
-4. Terminal 3 decodes the optical stream via webcam and flashes the **RED ALERT** on the SOC dashboard in $< 500\text{ ms}$!
+---
+
+## 🎮 Live 2-Minute Presentation Walkthrough for Evaluators
+
+1. **Step 1: Baseline Normal Operation**
+   - Point out the **Nominal Reactor Vitals**: Core Temp $\approx 295.4^\circ\text{C}$, Pressure $\approx 155.0\text{ bar}$, Grid Frequency $\approx 50.000\text{ Hz}$, Electrical Output $\approx 880\text{ MW}$.
+   - Show the **Optical Data Diode**: Modulated photons carrying real-time telemetry with **Zero Inbound Return Path**.
+   - Show the **AI Anomaly Score**: $\mathcal{S}_{\text{peak}} \approx 0.08 < \tau = 0.45$ (Nominal Baseline).
+
+2. **Step 2: Live Host Process Breach Demonstration**
+   - On your laptop, open **Notepad** (or **Calculator**).
+   - In $< 400\text{ ms}$, Terminal 1 catches the newly spawned PID.
+   - Terminal 2 encodes the critical event into the optical QR diode.
+   - Terminal 3 flashes the glowing **RED DEFENSE ALERT: UNAUTHORIZED PROCESS DETECTED**!
+
+3. **Step 3: Stealth Cyber Attack Demonstration**
+   - In Terminal 1, press **`[1]` + ENTER** (Data Exfiltration Flood) or **`[2]` + ENTER** (Stealth C2 Beacon).
+   - In Terminal 3, the Peak Anomaly Score $\mathcal{S}_{\text{peak}}$ spikes past $\tau$, and the Threat Attribution Classifier immediately flags the attack category!
+
+4. **Step 4: Physical Coolant Valve Tampering**
+   - In Terminal 1, press **`[4]` + ENTER**.
+   - The Core Temperature spikes past $348^\circ\text{C}$ and Primary Pressure jumps to $176\text{ bar}$, triggering the physical reactor safety alarms on the SOC dashboard!
+   - Press **`[0]` + ENTER** to restore nominal baseline.
