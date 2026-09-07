@@ -231,9 +231,63 @@ def run_campaign_evaluation(
     print(f"   • Hysteresis Confirmation:    {results['phase3_sustained_attack']['confirmed_latency_seconds']} s (2-of-3 confirm)")
     print(f"   • Dominant Channel:           {top_channel} ({channel_pct:.1f}% stability)")
     print(f"4. Attack Recovery (240-300s):   Recovery Time = {results['phase4_recovery']['recovery_seconds']} s | Post-Recovery FPR = {p4_fpr*100:4.1f}%")
-    print(f"{'-'*78}")
+    # Generate high-resolution campaign visualization
+    plot_campaign(all_alerts, tau, attack_name, "results/campaign.png")
 
     return results
+
+
+def plot_campaign(all_alerts: List[AlertEvent], tau: float, attack_name: str, out_path: str = "results/campaign.png"):
+    """Generate dark-themed publication-grade campaign timeline visualization."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception as e:
+        print(f"[!] Skipping plot generation: {e}")
+        return
+
+    times = [0.5 * (a.window_t0 + a.window_t1) for a in all_alerts]
+    scores = [a.peak_score for a in all_alerts]
+    confirmed = [a.confirmed for a in all_alerts]
+
+    fig, ax = plt.subplots(figsize=(11, 4.5), dpi=150)
+    fig.patch.set_facecolor("#0e1117")
+    ax.set_facecolor("#161b22")
+
+    # Shaded phase bands
+    ax.axvspan(0, 60, color="#238636", alpha=0.15, label="P1: Calm Telemetry")
+    ax.axvspan(60, 120, color="#1f6feb", alpha=0.15, label="P2: Web Sync Shift")
+    ax.axvspan(120, 240, color="#da3633", alpha=0.20, label=f"P3: Sustained {attack_name.upper()}")
+    ax.axvspan(240, 300, color="#8957e5", alpha=0.15, label="P4: Calm Recovery")
+
+    # Score timeline
+    ax.plot(times, scores, color="#58a6ff", linewidth=1.8, label="Window Peak Score $S_{peak}$")
+
+    # Highlight confirmed attack points
+    conf_times = [t for t, c in zip(times, confirmed) if c]
+    conf_scores = [s for s, c in zip(scores, confirmed) if c]
+    if conf_times:
+        ax.scatter(conf_times, conf_scores, color="#f85149", s=36, zorder=5, label="Confirmed Attack Alert")
+
+    # Threshold line
+    ax.axhline(tau, color="#d29922", linestyle="--", linewidth=1.5, label=f"Threshold $\\tau = {tau:.2f}$")
+
+    ax.set_title(f"CHRONOS Continuous Campaign: {attack_name.upper()} Detection & Recovery", color="#c9d1d9", fontsize=13, fontweight="bold", pad=10)
+    ax.set_xlabel("Continuous Timeline (seconds)", color="#8b949e", fontsize=10)
+    ax.set_ylabel("Peak Anomaly Score $S_{peak}$", color="#8b949e", fontsize=10)
+    ax.tick_params(colors="#8b949e")
+    for spine in ax.spines.values():
+        spine.set_color("#30363d")
+    ax.set_yscale("log")
+    ax.grid(True, linestyle=":", alpha=0.3, color="#8b949e")
+    ax.legend(loc="upper left", facecolor="#161b22", edgecolor="#30363d", labelcolor="#c9d1d9", fontsize=8.5)
+
+    plt.tight_layout()
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, facecolor=fig.get_facecolor(), edgecolor="none")
+    plt.close(fig)
+    print(f"Saved campaign visualization → {out_path}")
 
 
 def main():

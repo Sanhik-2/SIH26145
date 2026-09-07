@@ -1,5 +1,5 @@
 {
-  "attack": "dga_tunnel",
+  "attack": "exfil_burst",
   "threshold_tau": 2.81,
   "phase1_baseline": {
     "windows": 25,
@@ -17,9 +17,9 @@
     "ttd_seconds": 1.02,
     "confirmed_latency_seconds": 3.02,
     "persistence_rate": 1.0,
-    "mean_peak_score": 75.0813,
-    "top_channel": "entropy",
-    "attribution_stability": 86.7
+    "mean_peak_score": 880.3193,
+    "top_channel": "bytes",
+    "attribution_stability": 100.0
   },
   "phase4_recovery": {
     "windows": 26,
