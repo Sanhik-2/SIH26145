@@ -37,7 +37,7 @@ from simulation.benign.web_sync import web_sync_stream
 ATTACK_FACTORIES = {
     "c2_beacon": lambda dur, seed, t0: c2_beacon_stream(duration_s=dur, seed=seed, t0=t0, period=2.5, jitter=0.2),
     "exfil_burst": lambda dur, seed, t0: exfil_burst_stream(duration_s=dur, seed=seed, t0=t0, gap_mean=0.015, pkt_size=1400),
-    "dga_tunnel": lambda dur, seed, t0: dga_tunnel_stream(duration_s=dur, seed=seed, t0=t0, period=3.0, jitter=0.3),
+    "dga_tunnel": lambda dur, seed, t0: dga_tunnel_stream(duration_s=dur, seed=seed, t0=t0),
 }
 
 

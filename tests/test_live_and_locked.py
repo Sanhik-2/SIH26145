@@ -313,3 +313,20 @@ def test_web_sync_stream_properties():
     from features.extractor import shannon_entropy
     entropies = [shannon_entropy(p.payload) for p in pkts]
     assert all(2.5 <= e <= 5.5 for e in entropies)
+
+
+# ----------------------------------------------------------------------
+# 7. Campaign factory smoke test
+# ----------------------------------------------------------------------
+def test_campaign_factory_smoke():
+    """Every attack entry in the campaign factory must actually build —
+    catches copy-paste kwarg drift (the dga period/jitter bug)."""
+    from evaluate_campaign import ATTACK_FACTORIES, build_continuous_campaign
+    for name in ("c2_beacon", "exfil_burst", "dga_tunnel"):
+        pkts, phases = build_continuous_campaign(
+            attack_name=name, seed=1,
+            t_phase1=2.0, t_phase2=2.0, t_phase3=4.0, t_phase4=2.0
+        )
+        assert len(pkts) > 0, f"{name} produced no packets"
+        assert len(phases) == 4, f"{name} phases missing"
+

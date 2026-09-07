@@ -1,5 +1,5 @@
 {
-  "attack": "c2_beacon",
+  "attack": "dga_tunnel",
   "threshold_tau": 2.81,
   "phase1_baseline": {
     "windows": 25,
@@ -14,12 +14,12 @@
   "phase3_sustained_attack": {
     "windows": 60,
     "duration_seconds": 120.0,
-    "ttd_seconds": 3.02,
-    "confirmed_latency_seconds": 5.02,
-    "persistence_rate": 0.9833,
-    "mean_peak_score": 16.4036,
+    "ttd_seconds": 1.02,
+    "confirmed_latency_seconds": 3.02,
+    "persistence_rate": 1.0,
+    "mean_peak_score": 75.0813,
     "top_channel": "entropy",
-    "attribution_stability": 100.0
+    "attribution_stability": 86.7
   },
   "phase4_recovery": {
     "windows": 26,
