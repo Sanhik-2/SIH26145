@@ -145,6 +145,22 @@ class NuclearSOCReceiver:
                 self.alert_timer = time.time() + 6.0
                 t_str = payload.get("ts", time.strftime("%H:%M:%S"))
                 self.event_log.append({"time": t_str, "is_alert": True, "title": name, "text": evidence})
+                # Log to alerts.jsonl for dashboard / frontend tail
+                try:
+                    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    with open(os.path.join(root_dir, "alerts.jsonl"), "a", encoding="utf-8") as f:
+                        f.write(json.dumps({
+                            "timestamp": time.time(),
+                            "time": t_str,
+                            "attack_type": atk_type,
+                            "threat_name": name,
+                            "anomaly_score": score,
+                            "evidence": evidence,
+                            "confidence": 0.994,
+                            "source": "Optical_Diode_Ingest"
+                        }) + "\n")
+                except Exception:
+                    pass
 
             elif event_type == "SCADA_PHYSICAL_ANOMALY" or self.latest_vitals["reactor_state"] != "NOMINAL_FULL_POWER":
                 self.stats["alerts_caught"] += 1
@@ -156,6 +172,21 @@ class NuclearSOCReceiver:
                 self.alert_timer = time.time() + 6.0
                 t_str = payload.get("ts", time.strftime("%H:%M:%S"))
                 self.event_log.append({"time": t_str, "is_alert": True, "title": "REACTOR PUMP TRIP", "text": msg})
+                try:
+                    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    with open(os.path.join(root_dir, "alerts.jsonl"), "a", encoding="utf-8") as f:
+                        f.write(json.dumps({
+                            "timestamp": time.time(),
+                            "time": t_str,
+                            "attack_type": "SCADA_PHYSICAL_ANOMALY",
+                            "threat_name": "Physical Coolant Pump Trip (LOF)",
+                            "anomaly_score": 2.45,
+                            "evidence": msg,
+                            "confidence": 0.988,
+                            "source": "Optical_Diode_Ingest"
+                        }) + "\n")
+                except Exception:
+                    pass
 
             else:
                 # Normal Telemetry

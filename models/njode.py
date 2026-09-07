@@ -20,8 +20,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-MODEL_VERSION = "1.0"
-FEATURES = ["iat", "bytes", "entropy", "burst"]   # keep in sync with features/
+MODEL_VERSION = "1.1"
+FEATURES = ["iat", "bytes", "entropy", "burst", "direction"]   # keep in sync with features/
 
 
 # ----------------------------------------------------------------------
@@ -63,7 +63,7 @@ class ODEVectorField(nn.Module):
 # NJ-ODE core
 # ----------------------------------------------------------------------
 class NJODE(nn.Module):
-    def __init__(self, d_x=4, d_h=10, hidden=50, dropout=0.1,
+    def __init__(self, d_x=5, d_h=10, hidden=50, dropout=0.1,
                  grid_step=0.01, horizon=1.0):
         super().__init__()
         assert horizon / grid_step == int(horizon / grid_step), "grid must divide horizon"
@@ -81,6 +81,8 @@ class NJODE(nn.Module):
         self.register_buffer("threshold", torch.tensor(float("inf")))
         self.register_buffer("x_mean", torch.zeros(d_x))
         self.register_buffer("x_std",  torch.ones(d_x))
+        # Benign peak score quantiles [0.5, 0.9, 0.99, 0.999] for calibrated confidence
+        self.register_buffer("calibration_quantiles", torch.tensor([float("inf"), float("inf"), float("inf"), float("inf")]))
         self._reset_stream()
 
     # ---- one pass over the time grid (batched, vectorized across paths) ----
@@ -173,9 +175,42 @@ class NJODE(nn.Module):
         s = torch.cat(chunks)
         tau_mean, tau_q = s.mean() + 3.0 * s.std(), torch.quantile(s, quantile)
         self.threshold.copy_(torch.maximum(tau_mean, tau_q))
+
+        # Store benign peak quantiles [0.5, 0.9, 0.99, 0.999] for calibrated confidence
+        q_levels = torch.tensor([0.5, 0.9, 0.99, 0.999], device=s.device)
+        self.calibration_quantiles.copy_(torch.quantile(s, q_levels))
+
         print(f"[✓] window-peak τ = {self.threshold.item():.4f}  "
               f"(mean+3σ={tau_mean.item():.4f}, q{quantile}={tau_q.item():.4f})")
         return self
+
+    def compute_confidence(self, peak_score: float) -> float:
+        """Principled empirical confidence score C in [0.0, 1.0] monotonic with peak score."""
+        if peak_score <= 0.0 or not math.isfinite(peak_score):
+            return 0.0
+        tau = float(self.threshold.item()) if torch.isfinite(self.threshold) else 2.81
+        q = self.calibration_quantiles.cpu().tolist()
+        if any(math.isinf(v) for v in q):
+            if peak_score <= tau:
+                return float(0.5 * (peak_score / max(1e-4, tau)))
+            excess = (peak_score - tau) / max(1e-4, tau)
+            return float(min(1.0, 0.5 + 0.5 * (1.0 - math.exp(-0.4 * excess))))
+
+        q50, q90, q99, q999 = q[0], q[1], q[2], q[3]
+        if peak_score <= q50:
+            return float(max(0.0, 0.10 * (peak_score / max(1e-4, q50))))
+        elif peak_score <= q90:
+            frac = (peak_score - q50) / max(1e-4, q90 - q50)
+            return float(0.10 + 0.50 * frac)
+        elif peak_score <= q99:
+            frac = (peak_score - q90) / max(1e-4, q99 - q90)
+            return float(0.60 + 0.30 * frac)
+        elif peak_score <= q999:
+            frac = (peak_score - q99) / max(1e-4, q999 - q99)
+            return float(0.90 + 0.08 * frac)
+        else:
+            excess = (peak_score - q999) / max(1e-4, q999)
+            return float(min(1.0, 0.98 + 0.02 * (1.0 - math.exp(-0.5 * excess))))
 
     @torch.no_grad()
     def compute_anomaly_scores(self, values, mask, t_grid, device="cpu"):
@@ -219,7 +254,7 @@ class NJODE(nn.Module):
             "state_dict": self.state_dict(),
             "config": {
                 "version": MODEL_VERSION,
-                "features": list(FEATURES),
+                "features": list(FEATURES[:self.d_x]),
                 "d_x": self.d_x,
                 "d_h": self.d_h,
                 "hidden": self.hidden,
@@ -243,9 +278,11 @@ class NJODE(nn.Module):
             )
         # Feature contract validation to prevent silent data-plane mismatch
         ckpt_features = config.get("features")
-        if ckpt_features is not None and ckpt_features != FEATURES:
+        d_x = config.get("d_x", len(ckpt_features) if ckpt_features else 5)
+        expected_features = list(FEATURES[:d_x])
+        if ckpt_features is not None and ckpt_features != expected_features:
             raise ValueError(
-                f"Feature contract mismatch: checkpoint has {ckpt_features}, model expects {FEATURES}"
+                f"Feature contract mismatch: checkpoint has {ckpt_features}, model expects {expected_features}"
             )
         init_kwargs = {
             k: v for k, v in config.items()
@@ -259,26 +296,25 @@ class NJODE(nn.Module):
 
 
 def attribute_error(x, y_minus) -> Tuple[str, str, Dict[str, float]]:
-    """Explainable channel attribution heuristic.
-
-    Decomposes prediction error across [iat, bytes, entropy, burst]
-    and maps the dominant channel to a threat category without supervised heads.
-    """
+    """Explainable channel attribution heuristic across feature channels."""
     diff = ((x - y_minus) ** 2).detach().cpu().numpy()
     if diff.ndim > 1:
         diff = diff.flatten()
     top_idx = int(np.argmax(diff))
-    name = FEATURES[top_idx]
+    name = FEATURES[top_idx] if top_idx < len(FEATURES) else f"ch_{top_idx}"
     mapping = {
         "iat": "beacon/recon",
         "bytes": "exfil-flood",
         "entropy": "tunnel/encrypted-c2",
         "burst": "exfil-flood",
+        "direction": "volumetric-ddos",
     }
     threat = mapping.get(name, "unknown")
-    errs = {FEATURES[i]: float(diff[i]) for i in range(len(FEATURES))}
+    feature_names = FEATURES[:len(diff)]
+    errs = {feature_names[i]: float(diff[i]) for i in range(len(diff))}
     return name, threat, errs
 
 
 attribute_observation = attribute_error
+
 

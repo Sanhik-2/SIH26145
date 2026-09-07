@@ -18,7 +18,7 @@ def main():
     s_sync = featurize(web_sync_stream(duration_s=600.0, seed=1))
     print(f"      {len(s_tel)} telemetry packets, {len(s_sync)} web_sync packets featurized")
 
-    model = NJODE(d_x=4, d_h=10)                 # locked config: d_h=10, hidden=50
+    model = NJODE(d_x=5, d_h=10)                 # Protocol v1.1: d_x=5, d_h=10, hidden=50
     win = Windower(model, window_s=10.0)
     win.fit_standardizer(s_tel, s_sync)          # Scaler fitted jointly on benign baseline
 

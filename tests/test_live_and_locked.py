@@ -27,15 +27,15 @@ from simulation.benign.web_sync import web_sync_stream
 DT = 0.01
 K = 50
 HORIZON = DT * K
-D_X = 4
+D_X = 5
 
 
 @pytest.fixture()
 def small_model():
     torch.manual_seed(42)
     m = NJODE(d_x=D_X, d_h=6, hidden=16, grid_step=DT, horizon=HORIZON)
-    m.x_mean.copy_(torch.tensor([0.5, 100.0, 3.0, 0.1]))
-    m.x_std.copy_(torch.tensor([0.2, 50.0, 1.0, 0.3]))
+    m.x_mean.copy_(torch.tensor([0.5, 100.0, 3.0, 0.1, 0.0]))
+    m.x_std.copy_(torch.tensor([0.2, 50.0, 1.0, 0.3, 1.0]))
     m.threshold.copy_(torch.tensor(10.0))
     m.eval()
     return m
@@ -50,18 +50,19 @@ def test_slot_aggregation_dry(small_model):
     win.mean_ = small_model.x_mean.cpu().numpy()
     win.std_ = small_model.x_std.cpu().numpy()
 
-    # Create dummy stream with known events
+    # Create dummy stream with known events (5-channel)
     t = np.array([0.1, 0.2, 0.205, 0.8, 1.5, 2.2, 4.9], dtype=np.float64)
     F = np.array([
-        [0.10, 64, 1.2, 0.0],
-        [0.10, 128, 2.0, 0.0],
-        [0.005, 1400, 7.8, 1.0],  # collision with 0.2 on same slot
-        [0.60, 96, 1.5, 0.0],
-        [0.70, 80, 1.4, 0.0],
-        [0.70, 300, 3.8, 0.0],
-        [2.70, 64, 1.1, 0.0],
+        [0.10, 64, 1.2, 0.0, 0.0],
+        [0.10, 128, 2.0, 0.0, 0.0],
+        [0.005, 1400, 7.8, 1.0, 0.0],  # collision with 0.2 on same slot
+        [0.60, 96, 1.5, 0.0, 0.0],
+        [0.70, 80, 1.4, 0.0, 0.0],
+        [0.70, 300, 3.8, 0.0, 0.0],
+        [2.70, 64, 1.1, 0.0, 0.0],
     ], dtype=np.float32)
     stream = FeatureStream(t=t, F=F)
+
 
     # 1. Batch consumer (Windower)
     v_batch, m_batch = win._slot(stream, t0=0.0)
@@ -135,11 +136,12 @@ def test_slot_collision_aggregation_semantics():
     t0 = 0.0
 
     # Three packets in slot index 2 (t in [0.20, 0.30))
+    # Two inbound (1.0) and one outbound (0.0) -> majority rule = 1.0
     t = np.array([0.21, 0.24, 0.28], dtype=np.float64)
     F = np.array([
-        [0.05, 100.0, 2.0, 0.0],
-        [0.03, 500.0, 4.5, 0.0],
-        [0.01, 800.0, 7.2, 1.0],
+        [0.05, 100.0, 2.0, 0.0, 0.0],
+        [0.03, 500.0, 4.5, 0.0, 1.0],
+        [0.01, 800.0, 7.2, 1.0, 1.0],
     ], dtype=np.float32)
 
     values, mask = aggregate_slots(t, F, t0, window_s, K, dt, mean=None, std=None)
@@ -156,6 +158,9 @@ def test_slot_collision_aggregation_semantics():
     assert values[slot_idx, 2] == pytest.approx(7.2)
     # burst max = 1.0
     assert values[slot_idx, 3] == pytest.approx(1.0)
+    # direction majority (2 of 3 inbound) = 1.0
+    assert values[slot_idx, 4] == pytest.approx(1.0)
+
 
 
 # ----------------------------------------------------------------------
@@ -262,11 +267,19 @@ def test_channel_attribution_heuristic():
     assert threat3 == "tunnel/encrypted-c2"
 
     # 4. High iat (timing jitter) residual
+    # 4. High iat (timing jitter) residual
     x4 = torch.tensor([18.0, 1.0, 1.0, 0.0])
     y4 = torch.tensor([0.0, 1.0, 1.0, 0.0])
     name4, threat4, _ = attribute_error(x4, y4)
     assert name4 == "iat"
     assert threat4 == "beacon/recon"
+
+    # 5. High direction (inbound flood) residual
+    x5 = torch.tensor([0.0, 1.0, 0.5, 0.0, 12.0])
+    y5 = torch.tensor([0.0, 1.0, 0.5, 0.0, 0.0])
+    name5, threat5, _ = attribute_error(x5, y5)
+    assert name5 == "direction"
+    assert threat5 == "volumetric-ddos"
 
 
 # ----------------------------------------------------------------------
@@ -316,17 +329,115 @@ def test_web_sync_stream_properties():
 
 
 # ----------------------------------------------------------------------
-# 7. Campaign factory smoke test
+# 7. Campaign factory smoke test across all 6 threat classes
 # ----------------------------------------------------------------------
 def test_campaign_factory_smoke():
     """Every attack entry in the campaign factory must actually build —
-    catches copy-paste kwarg drift (the dga period/jitter bug)."""
+    catches copy-paste kwarg drift across all 6 attack classes."""
     from evaluate_campaign import ATTACK_FACTORIES, build_continuous_campaign
-    for name in ("c2_beacon", "exfil_burst", "dga_tunnel"):
+    six_threats = ("c2_beacon", "exfil_burst", "dga_tunnel", "ddos_flood", "tls_c2", "portscan")
+    for name in six_threats:
+        assert name in ATTACK_FACTORIES, f"Missing attack factory: {name}"
         pkts, phases = build_continuous_campaign(
             attack_name=name, seed=1,
             t_phase1=2.0, t_phase2=2.0, t_phase3=4.0, t_phase4=2.0
         )
         assert len(pkts) > 0, f"{name} produced no packets"
         assert len(phases) == 4, f"{name} phases missing"
+
+
+# ----------------------------------------------------------------------
+# 8. Calibrated confidence monotonicity
+# ----------------------------------------------------------------------
+def test_calibrated_confidence_monotonicity(small_model):
+    """Confidence score must be strictly non-decreasing with peak anomaly score."""
+    small_model.calibration_quantiles.copy_(torch.tensor([1.5, 3.0, 6.0, 12.0]))
+    small_model.threshold.copy_(torch.tensor(3.0))
+
+    test_scores = np.linspace(0.0, 50.0, 100)
+    confidences = [small_model.compute_confidence(float(s)) for s in test_scores]
+
+    # Monotonicity check: c[i] <= c[i+1] for all i
+    for i in range(len(confidences) - 1):
+        assert confidences[i] <= confidences[i + 1] + 1e-7, (
+            f"Confidence decreased from s={test_scores[i]} (c={confidences[i]}) "
+            f"to s={test_scores[i+1]} (c={confidences[i+1]})"
+        )
+    # Boundedness
+    assert all(0.0 <= c <= 1.0 for c in confidences)
+    assert confidences[0] == 0.0
+    assert confidences[-1] > 0.95
+
+
+# ----------------------------------------------------------------------
+# 9. Hardware Data Diode protocol roundtrip (Protocol v1.1)
+# ----------------------------------------------------------------------
+def test_diode_protocol_roundtrip():
+    """Verify 15-byte record and packet frames encode/decode faithfully across diode."""
+    from diode.protocol import (
+        encode_record, decode_record, encode_packet, decode_packet, compute_flow_hash
+    )
+
+    # 1. 15-byte record roundtrip
+    raw_rec = encode_record(
+        t_s=12.345, iat_s=0.025, size=1400, entropy=7.8, direction=1, flow_hash=0x1234
+    )
+    assert len(raw_rec) == 15
+    dec = decode_record(raw_rec)
+    assert dec is not None
+    t_dec, iat_dec, size_dec, ent_dec, dir_dec, flow_dec = dec
+    assert abs(t_dec - (int(12.345 * 1000) / 1000.0)) < 0.002
+    assert abs(iat_dec - 0.025) < 0.001
+    assert size_dec == 1400
+    assert abs(ent_dec - 7.8) < 0.1
+    assert dir_dec == 1
+    assert flow_dec == 0x1234
+
+    # 2. Packet frame roundtrip
+    p_orig = Packet(
+        t=100.5, size=512, payload=b"optical_airgap_diode_test", direction=1, flow_key=b"flow_a"
+    )
+    p_enc = encode_packet(p_orig)
+    p_dec = decode_packet(p_enc)
+    assert p_dec is not None
+    assert abs(p_dec.t - p_orig.t) < 1e-5
+    assert p_dec.size == p_orig.size
+    assert p_dec.payload == p_orig.payload
+    assert p_dec.direction == p_orig.direction
+
+
+# ----------------------------------------------------------------------
+# 10. Evidence layer calculation
+# ----------------------------------------------------------------------
+def test_evidence_layer_metrics(small_model):
+    """Verify LiveFeeder calculates distinct flows, flow entropy, and direction byte ratios."""
+    feeder = LiveFeeder(small_model, window_s=5.0, stride_s=5.0)
+
+    # Ingest diverse stream: 10 outbound packets on flow A, 10 inbound packets on flow B
+    flow_a = b"src_a:1000->dst:80"
+    flow_b = b"src_b:2000->dst:80"
+
+    packets = [
+        Packet(t=0.1 * i, size=100, payload=b"\x00" * 20, direction=0, flow_key=flow_a)
+        for i in range(1, 11)
+    ] + [
+        Packet(t=1.5 + 0.1 * i, size=200, payload=b"\x00" * 20, direction=1, flow_key=flow_b)
+        for i in range(1, 11)
+    ]
+
+    for p in packets:
+        feeder.ingest_packet(p)
+
+    alerts = feeder.flush()
+    assert len(alerts) == 1
+    alert = alerts[0]
+    assert alert.evidence is not None
+    ev = alert.evidence
+
+    assert ev["distinct_flows"] == 2
+    assert ev["flow_entropy"] > 0.9     # 50/50 split -> H ~ 1.0 bit
+    assert ev["outbound_bytes"] == 1000 # 10 * 100
+    assert ev["inbound_bytes"] == 2000  # 10 * 200
+    assert ev["outbound_inbound_byte_ratio"] == pytest.approx(0.5, rel=1e-2)
+
 
