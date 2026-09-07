@@ -1,62 +1,104 @@
 """
-CHRONOS: NUCLEAR POWER PLANT SCADA & GRID NODE (BARC Unit 1)
--------------------------------------------------------------
-Critical Infrastructure Node inside the air-gapped nuclear enclave.
-1. Streams authentic Nuclear SCADA reactor physics (Core Temp, Coolant Pressure, Flow, Rods, Power, Grid Freq).
-2. Reads REAL Host System Metrics (actual Laptop CPU %, RAM %, Process counts).
-3. Live OS Process Sentry: Detects unauthorized execution of Notepad, Calc, CMD, PowerShell, etc.
-4. Interactive Red-Team Threat Injection:
-   - [1] Data Exfiltration Burst
-   - [2] Stealth C2 Beaconing
-   - [3] DGA DNS Tunnel
-   - [4] Reactor Coolant Valve Tampering
-   - [0] Normal Baseline Reset
-   - [ENTER] Instant Host Event Demo Alert
+CHRONOS: NUCLEAR SCADA NODE (REAL-WORLD NPPAD BENCHMARK DATASET)
+----------------------------------------------------------------
+Streams authentic, published Pressurized Water Reactor (PWR) operational telemetry
+from the NPPAD benchmark dataset (Nature Scientific Data, 2022) across the optical data diode.
+
+Dataset Citation:
+  Qi, B., Xiao, X., Liang, J. et al. An open time-series simulated dataset covering
+  various accidents for nuclear power plants. Nature Scientific Data 9, 766 (2022).
+
+Telemetry Channels (NPPAD):
+  - P: Primary Coolant System Pressure (bar)
+  - TAVG: Core Average Temperature (deg C)
+  - THA / TCA: Hot Leg / Cold Leg Coolant Temperatures (deg C)
+  - WRCA: Reactor Coolant Flow Rate (kg/s)
+  - PSGA: Steam Generator A Pressure (bar)
+  - QMWT: Reactor Thermal Core Power (MWth)
+
+Real Host Machine Monitoring:
+  - Real-time Laptop CPU %, RAM %, and process table via psutil.
+  - Live OS Process Sentry: Detects launch of notepad.exe, calc.exe, cmd.exe, powershell.exe, etc.
+
+Interactive Threat Injection:
+  - [1] Data Exfiltration Flood (Burst Anomaly)
+  - [2] Stealth C2 Heartbeat Beacon
+  - [3] High-Entropy DGA DNS Tunnel
+  - [4] Loss of Coolant Accident / Valve Rupture (Streams NPPAD LOCA dataset)
+  - [0] Normal Reactor Baseline (NPPAD Normal dataset)
+  - [ENTER] Instant Host Intrusion Alert
 
 Usage:
   python diode/nuclear_node.py
-  python diode/nuclear_node.py <TARGET_IP>
 """
 
-import socket
+import os
+import sys
+import csv
 import json
 import time
-import sys
+import socket
 import threading
-import random
 import psutil
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 TARGET_IP = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1"
 TARGET_PORT = 9999
 
 NODE_ID = 1
-FACILITY_NAME = "BARC / NPCIL Kudankulam Unit 1"
-SUBSYSTEM = "Nuclear Reactor SCADA & NLDC Grid Interconnect"
+FACILITY_NAME = "BARC / NPCIL Kudankulam Unit 1 (PWR)"
+DATASET_SOURCE = "Nature Scientific Data (NPPAD 96-Sensor Benchmark)"
+
+NORMAL_CSV = os.path.join(os.path.dirname(__file__), "..", "data", "nuclear", "nppad_normal.csv")
+LOCA_CSV = os.path.join(os.path.dirname(__file__), "..", "data", "nuclear", "nppad_loca.csv")
+
+# Load NPPAD Datasets
+normal_records = []
+loca_records = []
+
+try:
+    with open(NORMAL_CSV, "r", encoding="utf-8") as f:
+        normal_records = list(csv.DictReader(f))
+    print(f"[+] Loaded {len(normal_records)} authentic normal telemetry steps from NPPAD dataset.")
+except Exception as e:
+    print(f"[-] Warning: Failed to load {NORMAL_CSV}: {e}")
+
+try:
+    with open(LOCA_CSV, "r", encoding="utf-8") as f:
+        loca_records = list(csv.DictReader(f))
+    print(f"[+] Loaded {len(loca_records)} accident telemetry steps from NPPAD LOCA dataset.")
+except Exception as e:
+    print(f"[-] Warning: Failed to load {LOCA_CSV}: {e}")
+
+# Fallback record if files missing
+fallback_record = {
+    "TIME": "0.0", "P": "155.5", "TAVG": "310.0", "THA": "327.8", "TCA": "292.2",
+    "WRCA": "16515.8", "PSGA": "67.0", "QMWT": "2895.0"
+}
+if not normal_records:
+    normal_records = [fallback_record]
+if not loca_records:
+    loca_records = [fallback_record]
 
 # Monitored processes for live host breach detection
 WATCHED_APPS = {
     "notepad.exe": "Notepad (Text Editor)",
     "calc.exe": "Windows Calculator",
     "calculatorapp.exe": "Windows Calculator",
-    "cmd.exe": "Windows Command Prompt",
+    "cmd.exe": "Command Prompt (CMD)",
     "powershell.exe": "PowerShell Console",
     "mspaint.exe": "MS Paint",
-    "taskmgr.exe": "Task Manager",
-    "python.exe": "Python Execution Agent"
+    "taskmgr.exe": "Task Manager"
 }
 
-# Reactor physical state
-reactor_state = {
-    "mode": "NOMINAL",            # NOMINAL, ATTACK_EXFIL, ATTACK_C2, ATTACK_DGA, SENSOR_TAMPER
-    "core_temp": 295.4,           # deg C (nominal 290-300 C)
-    "primary_pressure": 155.0,    # bar (nominal 150-160 bar)
-    "coolant_flow": 42100.0,      # m^3/h
-    "control_rods": 18.5,         # % inserted
-    "power_output": 880.0,        # MW electrical
-    "grid_frequency": 50.00,      # Hz (Indian Grid standard)
-    "radiation_msv": 0.08         # mSv/h (ambient)
-}
-state_lock = threading.Lock()
+current_mode = "NORMAL"
+mode_lock = threading.Lock()
 
 def get_running_monitored_pids():
     pids = {}
@@ -88,7 +130,6 @@ def live_process_sentry(sock):
                 pkt = {
                     "node_id": NODE_ID,
                     "facility": FACILITY_NAME,
-                    "subsystem": SUBSYSTEM,
                     "event_type": "PROCESS_EXECUTION",
                     "app": friendly,
                     "pid": pid,
@@ -107,14 +148,14 @@ def live_process_sentry(sock):
 
 def interactive_threat_injector(sock):
     """Allows user to trigger realistic attacks during presentation."""
-    global reactor_state
+    global current_mode
     print("---------------------------------------------------------------")
-    print(" 🎮 PRESENTATION CONTROLS (Press key + ENTER):")
+    print(" [CONTROLS] PRESENTATION HOTKEYS (Press key + ENTER):")
     print("   [1] Inject Data Exfiltration Flood (Large Burst)")
-    print("   [2] Inject Periodic C2 Beaconing (Stealth)")
+    print("   [2] Inject Periodic C2 Beaconing (Stealth Heartbeat)")
     print("   [3] Inject DGA DNS Tunnelling (High Entropy)")
-    print("   [4] Inject Reactor Coolant Valve Tampering (Physical Trip)")
-    print("   [0] Reset Reactor to Normal Baseline")
+    print("   [4] Inject Loss of Coolant Incident (NPPAD LOCA Dataset)")
+    print("   [0] Reset to Nominal Baseline (NPPAD Normal Dataset)")
     print("   [ENTER] Fire Instant Host Execution Demo Alert")
     print("---------------------------------------------------------------\n")
 
@@ -124,14 +165,13 @@ def interactive_threat_injector(sock):
             now = time.strftime("%H:%M:%S")
 
             if cmd == "1":
-                with state_lock:
-                    reactor_state["mode"] = "ATTACK_EXFIL"
-                print("\n[⚡ ATTACK TRIGGERED] Data Exfiltration Flood injected into Simplex Stream!")
+                with mode_lock:
+                    current_mode = "ATTACK_EXFIL"
+                print("\n[!] [CYBER ATTACK TRIGGERED] Data Exfiltration Flood injected into Simplex Stream!")
                 for i in range(8):
                     pkt = {
                         "node_id": NODE_ID,
                         "facility": FACILITY_NAME,
-                        "subsystem": SUBSYSTEM,
                         "event_type": "CYBER_ATTACK",
                         "attack_type": "EXFILTRATION_BURST",
                         "burst_rate_mbps": 48.5,
@@ -143,13 +183,12 @@ def interactive_threat_injector(sock):
                     time.sleep(0.04)
 
             elif cmd == "2":
-                with state_lock:
-                    reactor_state["mode"] = "ATTACK_C2"
-                print("\n[⚡ ATTACK TRIGGERED] Stealth Periodic C2 Beaconing injected!")
+                with mode_lock:
+                    current_mode = "ATTACK_C2"
+                print("\n[!] [CYBER ATTACK TRIGGERED] Stealth Periodic C2 Beaconing injected!")
                 pkt = {
                     "node_id": NODE_ID,
                     "facility": FACILITY_NAME,
-                    "subsystem": SUBSYSTEM,
                     "event_type": "CYBER_ATTACK",
                     "attack_type": "C2_BEACONING",
                     "interval_s": 1.002,
@@ -160,13 +199,12 @@ def interactive_threat_injector(sock):
                 sock.sendto(json.dumps(pkt).encode("utf-8"), (TARGET_IP, TARGET_PORT))
 
             elif cmd == "3":
-                with state_lock:
-                    reactor_state["mode"] = "ATTACK_DGA"
-                print("\n[⚡ ATTACK TRIGGERED] DGA High-Entropy DNS Tunnel injected!")
+                with mode_lock:
+                    current_mode = "ATTACK_DGA"
+                print("\n[!] [CYBER ATTACK TRIGGERED] DGA High-Entropy DNS Tunnel injected!")
                 pkt = {
                     "node_id": NODE_ID,
                     "facility": FACILITY_NAME,
-                    "subsystem": SUBSYSTEM,
                     "event_type": "CYBER_ATTACK",
                     "attack_type": "DGA_TUNNEL",
                     "domain": "xk9q-7fa2-90bm-nvz.darknet.ru",
@@ -177,48 +215,40 @@ def interactive_threat_injector(sock):
                 sock.sendto(json.dumps(pkt).encode("utf-8"), (TARGET_IP, TARGET_PORT))
 
             elif cmd == "4":
-                with state_lock:
-                    reactor_state["mode"] = "SENSOR_TAMPER"
-                    reactor_state["core_temp"] = 348.6
-                    reactor_state["primary_pressure"] = 176.2
-                    reactor_state["coolant_flow"] = 18400.0
-                print("\n[⚠️ PHYSICAL ANOMALY] Coolant Valve Tampering Injected! Temp: 348.6 C | Pressure: 176.2 bar!")
+                with mode_lock:
+                    current_mode = "LOCA_ACCIDENT"
+                print("\n[!] [PHYSICAL INCIDENT INJECTED] Replaying NPPAD Loss of Coolant Accident (LOCA)!")
                 pkt = {
                     "node_id": NODE_ID,
                     "facility": FACILITY_NAME,
-                    "subsystem": SUBSYSTEM,
                     "event_type": "SCADA_PHYSICAL_ANOMALY",
-                    "payload": "ALARM: Primary Coolant Loop 1 Valve Restricted! Core Temp Spiking to 348.6C!",
-                    "temp": 348.6,
-                    "pressure": 176.2,
+                    "payload": "ALARM: Primary Coolant Loop Rupture! LOCA Transient Underway!",
                     "time": now
                 }
                 sock.sendto(json.dumps(pkt).encode("utf-8"), (TARGET_IP, TARGET_PORT))
 
             elif cmd == "0":
-                with state_lock:
-                    reactor_state["mode"] = "NOMINAL"
-                    reactor_state["core_temp"] = 295.4
-                    reactor_state["primary_pressure"] = 155.0
-                    reactor_state["coolant_flow"] = 42100.0
-                print("\n[✅ BASELINE RESTORED] Reactor returned to Nominal Stable Baseline.")
+                with mode_lock:
+                    current_mode = "NORMAL"
+                print("\n[+] [BASELINE RESTORED] Replaying NPPAD Normal Baseline Operational Dataset.")
 
             else:
-                # Instant manual host trigger
+                # Instant manual host breach trigger
                 pkt = {
                     "node_id": NODE_ID,
                     "facility": FACILITY_NAME,
-                    "subsystem": SUBSYSTEM,
                     "event_type": "PROCESS_EXECUTION",
-                    "app": "Mimikatz / Privilege Escalation Tool",
+                    "app": "Mimikatz / Memory Dumper",
                     "pid": 8844,
                     "severity": "CRITICAL_RED",
                     "payload": "ALERT: Unauthorized binary 'mimikatz.exe' executed in SCADA memory!",
                     "time": now
                 }
                 sock.sendto(json.dumps(pkt).encode("utf-8"), (TARGET_IP, TARGET_PORT))
-                print(f"\n[⚡ INSTANT EVENT FIRED] Simulated Host Breach Alert sent to Optical Diode!\n")
+                print(f"\n[!] [INSTANT EVENT FIRED] Simulated Host Breach Alert sent to Optical Diode!\n")
 
+        except (EOFError, KeyboardInterrupt):
+            break
         except Exception:
             pass
 
@@ -226,16 +256,19 @@ def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     print("=" * 65)
-    print("  CHRONOS: NUCLEAR POWER PLANT SCADA NODE")
+    print("  CHRONOS: NUCLEAR SCADA NODE (NPPAD BENCHMARK DATASET)")
     print(f"  Facility : {FACILITY_NAME}")
-    print(f"  Target Optical Diode Transmitter: {TARGET_IP}:{TARGET_PORT}")
+    print(f"  Source   : {DATASET_SOURCE}")
+    print(f"  Diode Tx : {TARGET_IP}:{TARGET_PORT} (Simplex Optical Egress)")
     print("=" * 65)
 
-    # Start live OS watcher & keyboard injector
     threading.Thread(target=live_process_sentry, args=(sock,), daemon=True).start()
     threading.Thread(target=interactive_threat_injector, args=(sock,), daemon=True).start()
 
     seq = 1
+    norm_idx = 0
+    loca_idx = 0
+
     while True:
         # Collect real laptop host stats
         host_cpu = psutil.cpu_percent(interval=None)
@@ -243,51 +276,59 @@ def main():
         host_procs = len(psutil.pids())
         now = time.strftime("%H:%M:%S")
 
-        with state_lock:
-            # Subtle realistic physics fluctuation
-            if reactor_state["mode"] == "NOMINAL":
-                temp = round(reactor_state["core_temp"] + random.uniform(-0.35, 0.35), 2)
-                press = round(reactor_state["primary_pressure"] + random.uniform(-0.2, 0.2), 2)
-                flow = round(reactor_state["coolant_flow"] + random.uniform(-50, 50), 1)
-                freq = round(50.00 + random.uniform(-0.03, 0.03), 3)
-                power = round(880.0 + random.uniform(-1.5, 1.5), 1)
+        with mode_lock:
+            if current_mode == "LOCA_ACCIDENT":
+                rec = loca_records[loca_idx % len(loca_records)]
+                loca_idx = (loca_idx + 1) % len(loca_records)
+                status_tag = "[ANOMALY: LOCA]"
+                event_type = "SCADA_PHYSICAL_ANOMALY"
             else:
-                temp = reactor_state["core_temp"]
-                press = reactor_state["primary_pressure"]
-                flow = reactor_state["coolant_flow"]
-                freq = 49.62
-                power = 945.0
+                rec = normal_records[norm_idx % len(normal_records)]
+                norm_idx = (norm_idx + 1) % len(normal_records)
+                status_tag = "[NORMAL: NPPAD]" if current_mode == "NORMAL" else "[CYBER ATTACK]"
+                event_type = "ROUTINE_SCADA" if current_mode == "NORMAL" else "CYBER_ATTACK"
 
-            pkt = {
-                "node_id": NODE_ID,
-                "facility": "BARC_Kudankulam_1",
-                "subsystem": "Reactor_Primary_Loop",
-                "event_type": "ROUTINE_SCADA",
-                "seq": seq,
-                "time": now,
-                # Physics Vitals
-                "temp_c": temp,
-                "pressure_bar": press,
-                "coolant_flow": flow,
-                "control_rods_pct": reactor_state["control_rods"],
-                "grid_freq_hz": freq,
-                "power_mw": power,
-                # Real Host Workstation Vitals
-                "host_cpu_pct": host_cpu,
-                "host_ram_pct": host_ram,
-                "host_procs": host_procs,
-                "payload": f"Reactor Core [T:{temp}C, P:{press}bar, Freq:{freq}Hz, Output:{power}MW]"
-            }
+        # Parse genuine physical channels from NPPAD dataset
+        p_bar = round(float(rec.get("P", 155.5)), 2)
+        tavg_c = round(float(rec.get("TAVG", 310.0)), 2)
+        tha_c = round(float(rec.get("THA", 327.8)), 2)
+        tca_c = round(float(rec.get("TCA", 292.2)), 2)
+        wrca_kgs = round(float(rec.get("WRCA", 16515.8)), 1)
+        psga_bar = round(float(rec.get("PSGA", 67.0)), 2)
+        qmwt = round(float(rec.get("QMWT", 2895.0)), 1)
+        mwe_power = round(qmwt * 0.33, 1)  # Thermal to electrical conversion (~33% efficiency)
+
+        pkt = {
+            "node_id": NODE_ID,
+            "facility": "BARC_Kudankulam_1",
+            "dataset": "NPPAD_Nature_Sci_Data_2022",
+            "event_type": event_type,
+            "seq": seq,
+            "time": now,
+            # Authentic NPPAD Physical Telemetry
+            "p_bar": p_bar,
+            "tavg_c": tavg_c,
+            "tha_c": tha_c,
+            "tca_c": tca_c,
+            "wrca_kgs": wrca_kgs,
+            "psga_bar": psga_bar,
+            "qmwt_thermal": qmwt,
+            "mwe_electric": mwe_power,
+            # Real Host Laptop Stats
+            "host_cpu_pct": host_cpu,
+            "host_ram_pct": host_ram,
+            "host_procs": host_procs,
+            "payload": f"NPPAD Core [P:{p_bar}bar, Tavg:{tavg_c}C, Flow:{wrca_kgs}kg/s, SG:{psga_bar}bar, Pwr:{mwe_power}MWe]"
+        }
 
         try:
             sock.sendto(json.dumps(pkt).encode("utf-8"), (TARGET_IP, TARGET_PORT))
-            status_tag = "✅ NORMAL" if reactor_state["mode"] == "NOMINAL" else "⚠️ ATTACK/ANOMALY"
-            print(f"[{now}] #{seq:04d} | {status_tag} | T: {temp}C | P: {press}bar | Freq: {freq}Hz | CPU: {host_cpu}% | RAM: {host_ram}%")
+            print(f"[{now}] #{seq:04d} | {status_tag} | P: {p_bar}bar | Tavg: {tavg_c}C | Flow: {wrca_kgs}kg/s | SG: {psga_bar}bar | Output: {mwe_power}MWe | CPU: {host_cpu}%")
         except Exception as e:
             print(f"[-] Send error: {e}")
 
         seq += 1
-        time.sleep(1.2)
+        time.sleep(1.0)
 
 if __name__ == "__main__":
     main()

@@ -3,24 +3,35 @@ CHRONOS: NUCLEAR SCADA OPTICAL DATA DIODE (TRANSMITTER GATEWAY)
 --------------------------------------------------------------
 Enforces physical one-way air gap egress from Nuclear SCADA Enclave:
 1. Ingests UDP simplex telemetry from the Nuclear SCADA Node on port 9999.
-2. In Terminal: Displays live transmission logs & flags immediate security events.
-3. On Screen: Renders an animated high-contrast Optical QR Stream for the receiver.
+2. Polls containerized SCADA Node REST API (http://127.0.0.1:8080) for live NPPAD vitals.
+3. Renders high-contrast Optical QR Photon Stream on screen for optical scanning.
 4. Broadcasts local simplex mirror on port 9998 (enables instant single-laptop SOC testing).
 
 Usage:
   python diode/qr_gateway.py
 """
 
+import sys
 import socket
 import json
 import time
 import threading
+import urllib.request
+import urllib.error
 import numpy as np
 import cv2
 import qrcode
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 INGEST_PORT = 9999
 MIRROR_PORT = 9998
+SCADA_HMI_URL = "http://127.0.0.1:8080"
 
 log_buffer = []
 buffer_lock = threading.Lock()
@@ -31,6 +42,16 @@ last_event = "System Initialized - Baseline Stable"
 last_event_time = "--:--:--"
 is_alert_active = False
 
+def poll_scada_container():
+    """Polls the containerized SCADA node for live NPPAD telemetry."""
+    try:
+        req = urllib.request.Request(SCADA_HMI_URL, headers={"User-Agent": "ChronosDiodeGateway/1.0"})
+        with urllib.request.urlopen(req, timeout=0.8) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data
+    except Exception:
+        return None
+
 def packet_listener():
     """Listens for UDP packets from Nuclear SCADA and queues for optical encoding."""
     global log_buffer, total_received, total_bytes, last_event, last_event_time, is_alert_active
@@ -39,12 +60,14 @@ def packet_listener():
 
     mirror_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    print("\n" + "=" * 65)
+    print("\n" + "=" * 68)
     print("  CHRONOS: NUCLEAR SCADA OPTICAL DIODE GATEWAY ONLINE")
     print(f"  Ingest Port  : 0.0.0.0:{INGEST_PORT} (Simplex Inbound from SCADA)")
+    print(f"  Container HMI: {SCADA_HMI_URL} (Live NPPAD Benchmark Telemetry)")
     print(f"  Optical Out  : High-Contrast QR Photon Stream on Screen")
+    print(f"  Mirror Port  : 127.0.0.1:{MIRROR_PORT} (Simplex Air-Gap Receiver)")
     print(f"  Air Gap      : STRICT ONE-WAY EGRESS (ZERO RETURN PATH)")
-    print("=" * 65 + "\n")
+    print("=" * 68 + "\n")
 
     while True:
         try:
@@ -62,37 +85,20 @@ def packet_listener():
             except Exception:
                 pass
 
-            if event_type == "PROCESS_EXECUTION":
-                is_alert_active = True
-                app = payload.get("app", "Unauthorized Binary")
-                pid = payload.get("pid", "---")
-                last_event = f"HOST BREACH: '{app}' (PID: {pid})"
-                last_event_time = now
-                print(f"\n🚨 [CRITICAL HOST BREACH ENCODED TO DIODE]")
-                print(f"   Unauthorized Process : {app.upper()} (PID: {pid})")
-                print(f"   Origin Host          : {addr[0]}")
-                print(f"   Timestamp            : {now}")
-                print(f"   Action               : Blasting Optical Alert Frame across Air-Gap!\n")
-
-            elif event_type == "CYBER_ATTACK":
+            if event_type == "CYBER_ATTACK":
                 is_alert_active = True
                 atk = payload.get("attack_type", "ANOMALY")
-                last_event = f"CYBER ATTACK: {atk}"
+                threat_cls = payload.get("threat_class", "a-f")
+                last_event = f"CYBER ATTACK [{threat_cls}]: {atk}"
                 last_event_time = now
-                print(f"\n⚡ [CYBER THREAT ENCODED TO DIODE] Threat: {atk} | Time: {now}\n")
+                print(f"[!] [CYBER THREAT ENCODED TO DIODE] Threat: [{threat_cls}] {atk} | Time: {now}")
 
             elif event_type == "SCADA_PHYSICAL_ANOMALY":
                 is_alert_active = True
-                last_event = "VALVE TAMPERING / CORE OVERHEAT"
+                state = payload.get("reactor_state", "LOSS_OF_FLOW")
+                last_event = f"PHYSICAL ANOMALY: {state}"
                 last_event_time = now
-                print(f"\n⚠️ [PHYSICAL SCADA ALARM] Coolant Valve Trip! Temp: {payload.get('temp')}C\n")
-
-            else:
-                temp = payload.get("temp_c", "--")
-                press = payload.get("pressure_bar", "--")
-                freq = payload.get("grid_freq_hz", "--")
-                cpu = payload.get("host_cpu_pct", "--")
-                print(f"[{now}] #{total_received:04d} SCADA Telemetry | Core: {temp}C | P: {press}bar | Grid: {freq}Hz | Host CPU: {cpu}%")
+                print(f"[!] [PHYSICAL SCADA ALARM] {state}! Pressure: {payload.get('p_bar')} bar")
 
             with buffer_lock:
                 log_buffer.append(payload)
@@ -118,6 +124,7 @@ def main():
 
     # Start packet ingestion thread
     threading.Thread(target=packet_listener, daemon=True).start()
+    mirror_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     cv2.namedWindow("CHRONOS Nuclear Optical Diode (Transmitter)", cv2.WINDOW_NORMAL)
 
@@ -129,36 +136,79 @@ def main():
             log_buffer.clear()
 
         if not batch:
-            batch = [{
-                "node_id": 1,
-                "facility": "BARC_Unit_1",
-                "event_type": "ROUTINE_SCADA",
-                "temp_c": 295.4,
-                "pressure_bar": 155.0,
-                "grid_freq_hz": 50.00,
-                "power_mw": 880.0,
-                "host_cpu_pct": 12.4,
-                "payload": "Nominal Reactor Steady State",
-                "seq": sequence_id,
-                "time": time.strftime("%H:%M:%S")
-            }]
+            # Poll container directly for live NPPAD data
+            node_data = poll_scada_container()
+            if node_data:
+                now_str = time.strftime("%H:%M:%S")
+                state = node_data.get("reactor_state", "NOMINAL_FULL_POWER")
+                evt = "ROUTINE_SCADA" if state == "NOMINAL_FULL_POWER" else "SCADA_PHYSICAL_ANOMALY"
+                latest = {
+                    "node_id": 1,
+                    "facility": "BARC_Kudankulam_1",
+                    "dataset": "NPPAD_Nature_Sci_Data_2022",
+                    "reactor_state": state,
+                    "event_type": evt,
+                    "seq": sequence_id,
+                    "time": now_str,
+                    "ts": now_str,
+                    "p_bar": node_data.get("pressure_bar", 155.5),
+                    "tavg_c": node_data.get("core_temp_c", 310.0),
+                    "tha_c": node_data.get("core_temp_c", 310.0) + 17.8,
+                    "tca_c": node_data.get("core_temp_c", 310.0) - 17.8,
+                    "wrca_kgs": node_data.get("coolant_flow_kgs", 16515.8),
+                    "psga_bar": 67.0,
+                    "mwe_electric": node_data.get("output_mwe", 955.3),
+                    "host_cpu_pct": node_data.get("container_cpu_pct", 1.2),
+                    "host_ram_pct": node_data.get("container_mem_pct", 2.8),
+                    "host_ram_mb": node_data.get("container_mem_mb", 28.5),
+                    "payload": f"NPPAD [{state}] P:{node_data.get('pressure_bar', 155.5):.1f}bar Flow:{node_data.get('coolant_flow_kgs', 16515.8):.0f}kg/s"
+                }
+            else:
+                latest = {
+                    "node_id": 1,
+                    "facility": "BARC_Kudankulam_1",
+                    "event_type": "ROUTINE_SCADA",
+                    "p_bar": 155.5,
+                    "tavg_c": 310.0,
+                    "tha_c": 327.8,
+                    "tca_c": 292.2,
+                    "wrca_kgs": 16515.8,
+                    "psga_bar": 67.0,
+                    "mwe_electric": 955.3,
+                    "host_cpu_pct": 1.2,
+                    "host_ram_pct": 2.8,
+                    "payload": "NPPAD Kudankulam Nominal Baseline",
+                    "seq": sequence_id,
+                    "time": time.strftime("%H:%M:%S")
+                }
+        else:
+            latest = batch[-1]
 
-        # Compact optical payload structure
-        latest = batch[-1]
+        # Compact optical payload
         optical_payload = {
             "seq": sequence_id,
-            "ts": latest.get("time", time.strftime("%H:%M:%S")),
+            "ts": latest.get("time", latest.get("ts", time.strftime("%H:%M:%S"))),
             "type": latest.get("event_type", "ROUTINE_SCADA"),
-            "temp": latest.get("temp_c", 295.4),
-            "press": latest.get("pressure_bar", 155.0),
-            "freq": latest.get("grid_freq_hz", 50.00),
-            "mw": latest.get("power_mw", 880.0),
-            "cpu": latest.get("host_cpu_pct", 10.0),
-            "ram": latest.get("host_ram_pct", 45.0),
-            "app": latest.get("app", ""),
+            "state": latest.get("reactor_state", "NOMINAL_FULL_POWER"),
+            "p": round(float(latest.get("p_bar", latest.get("pressure_bar", 155.5))), 1),
+            "tavg": round(float(latest.get("tavg_c", latest.get("temp_c", 310.0))), 1),
+            "tha": round(float(latest.get("tha_c", 327.8)), 1),
+            "tca": round(float(latest.get("tca_c", 292.2)), 1),
+            "flow": round(float(latest.get("wrca_kgs", latest.get("coolant_flow_kgs", 16515.8))), 0),
+            "psg": round(float(latest.get("psga_bar", 67.0)), 1),
+            "mw": round(float(latest.get("mwe_electric", latest.get("output_mwe", 955.0))), 1),
+            "cpu": round(float(latest.get("host_cpu_pct", latest.get("container_cpu_pct", 1.2))), 1),
+            "ram": round(float(latest.get("host_ram_pct", latest.get("container_mem_pct", 2.8))), 1),
+            "cls": latest.get("threat_class", ""),
             "atk": latest.get("attack_type", ""),
             "msg": latest.get("payload", "")[:45]
         }
+
+        # Mirror across local port 9998
+        try:
+            mirror_sock.sendto(json.dumps(optical_payload).encode("utf-8"), ("127.0.0.1", MIRROR_PORT))
+        except Exception:
+            pass
 
         qr_text = json.dumps(optical_payload)
         qr_img = generate_qr_matrix(qr_text)
@@ -175,30 +225,35 @@ def main():
         # Draw QR frame
         canvas[70:510, 120:560] = qr_img
 
-        # Outer border around QR: Green for normal, bright Red if alert
-        border_color = (0, 0, 255) if is_alert_active else (0, 255, 120)
-        cv2.rectangle(canvas, (116, 66), (564, 514), border_color, 3)
+        # Bottom Telemetry Strip
+        cv2.rectangle(canvas, (0, 520), (w, h), (18, 18, 28), -1)
+        cv2.line(canvas, (0, 520), (w, 520), (50, 50, 70), 1)
 
-        # Status HUD below QR
-        cv2.rectangle(canvas, (20, 530), (w - 20, 660), (20, 20, 30), -1)
-        cv2.rectangle(canvas, (20, 530), (w - 20, 660), (45, 45, 60), 1)
+        cv2.putText(canvas, f"Frame #{sequence_id} | Ingest: {total_received} packets | Size: {len(qr_text)}B", 
+                    (25, 545), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+        
+        status_color = (0, 0, 255) if optical_payload.get("atk") or optical_payload.get("state") != "NOMINAL_FULL_POWER" else (0, 255, 120)
+        cv2.putText(canvas, f"State: {optical_payload.get('state')} | CPU: {optical_payload.get('cpu')}% | RAM: {optical_payload.get('ram')}%", 
+                    (25, 575), cv2.FONT_HERSHEY_SIMPLEX, 0.48, status_color, 1)
 
-        cv2.putText(canvas, f"OPTICAL EMISSION SEQ: #{sequence_id:06d} | FRAME READY", (35, 555), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.52, (255, 255, 255), 1)
-        cv2.putText(canvas, f"Total Ingested Telemetry: {total_received} pkts ({total_bytes / 1024:.1f} KB)", (35, 580), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 255, 200), 1)
-        cv2.putText(canvas, "CHANNEL SECURITY: PHOTONS ONLY | ZERO INBOUND RETURN PATH", (35, 608), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 150, 255), 2)
-        cv2.putText(canvas, f"Latest Event: [{last_event_time}] {last_event[:42]}", (35, 638), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 80, 255) if is_alert_active else (180, 180, 180), 1)
+        cv2.putText(canvas, f"NPPAD Vitals: P={optical_payload.get('p')}bar | Tavg={optical_payload.get('tavg')}C | Flow={optical_payload.get('flow')}kg/s | MW={optical_payload.get('mw')}MWe", 
+                    (25, 605), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 240, 255), 1)
+
+        cv2.putText(canvas, "Air-Gap: UNIDIRECTIONAL OPTICAL PHOTONS ONLY (ZERO COPPER RETURN)", 
+                    (25, 638), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 255, 0), 1)
+
+        cv2.putText(canvas, "Scan with Webcam on Air-Gapped SOC or press SPACE on SOC for Loopback", 
+                    (25, 665), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (140, 140, 140), 1)
 
         cv2.imshow("CHRONOS Nuclear Optical Diode (Transmitter)", canvas)
 
         sequence_id += 1
-
         elapsed = time.time() - start_time
-        wait_ms = max(1, int((0.6 - elapsed) * 1000))
-        if cv2.waitKey(wait_ms) & 0xFF == ord('q'):
+        sleep_dur = max(0.05, 0.5 - elapsed)
+        time.sleep(sleep_dur)
+
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
             break
 
     cv2.destroyAllWindows()

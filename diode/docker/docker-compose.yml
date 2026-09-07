@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  nuclear-scada:
+    build: .
+    image: nuclear-scada:latest
+    container_name: nuclear-scada-node
+    restart: unless-stopped
+    ports:
+      - "502:502"
+      - "8080:8080"
+    environment:
+      - DIODE_HOST=host.docker.internal
+      - DIODE_PORT=9999
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
