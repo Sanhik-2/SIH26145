@@ -33,15 +33,21 @@ def main():
         print_banner()
         print("Usage: python run.py <command> [options]\n")
         print("Commands:")
-        print("  soc        Launch the modern React SOC Full-Stack Console (Default: :8501)")
-        print("  receiver   Launch Diode Scanner AI Ingestion Engine (UDP receiver)")
-        print("  sender     Launch Air-Gapped In-Zone Traffic Generator")
-        print("  dashboard  Launch classic Streamlit SOC Dashboard")
-        print("  campaign   Run 300s continuous campaign benchmark (saves plot & json)")
-        print("  test       Run unit and integration test suite (pytest)")
+        print("  soc          Launch the modern React SOC Full-Stack Console (Default: :8501)")
+        print("  receiver     Launch Diode Scanner AI Ingestion Engine (UDP receiver)")
+        print("  sender       Launch Air-Gapped In-Zone Traffic Generator")
+        print("  qr           Launch Optical Data Diode QR Transmitter Gateway")
+        print("  scan         Launch Optical QR Scanner Receiver & AI Core")
+        print("  nuclear-node Launch Nuclear SCADA Telemetry & OS Process Sentry Node")
+        print("  nuclear-soc  Launch Air-Gapped Nuclear SCADA SOC Defense Console")
+        print("  dashboard    Launch classic Streamlit SOC Dashboard")
+        print("  campaign     Run 300s continuous campaign benchmark (saves plot & json)")
+        print("  test         Run unit and integration test suite (pytest)")
         print("\nExamples:")
         print("  python run.py soc")
-        print("  python run.py receiver")
+        print("  python run.py qr")
+        print("  python run.py scan --source loopback")
+        print("  python run.py nuclear-node")
         print("  python run.py sender --attack exfil_burst --attack-at 20")
         print("  python run.py test")
         sys.exit(0)
@@ -53,6 +59,22 @@ def main():
         # Launch the Starlette/Uvicorn fullstack server
         server_script = REPO_ROOT / "dashboard" / "server.py"
         subprocess.run([sys.executable, str(server_script)] + extra_args)
+
+    elif cmd in ("qr", "gateway", "transmitter"):
+        qr_script = REPO_ROOT / "diode" / "qr_gateway.py"
+        subprocess.run([sys.executable, str(qr_script)] + extra_args)
+
+    elif cmd in ("scan", "optical-receiver", "optical"):
+        scan_script = REPO_ROOT / "diode" / "scan_receiver.py"
+        subprocess.run([sys.executable, str(scan_script)] + extra_args)
+
+    elif cmd in ("nuclear-node", "scada-node", "node"):
+        node_script = REPO_ROOT / "diode" / "nuclear_node.py"
+        subprocess.run([sys.executable, str(node_script)] + extra_args)
+
+    elif cmd in ("nuclear-soc", "soc-gui"):
+        soc_script = REPO_ROOT / "diode" / "nuclear_soc.py"
+        subprocess.run([sys.executable, str(soc_script)] + extra_args)
 
     elif cmd == "receiver":
         receiver_script = REPO_ROOT / "demo" / "scan_receiver.py"

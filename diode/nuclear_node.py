@@ -18,6 +18,7 @@ Usage:
   python diode/nuclear_node.py <TARGET_IP>
 """
 
+import argparse
 import socket
 import json
 import time
@@ -26,15 +27,16 @@ import threading
 import random
 import psutil
 
-TARGET_IP = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1"
+TARGET_IP = "127.0.0.1"
 TARGET_PORT = 9999
 
 NODE_ID = 1
 FACILITY_NAME = "BARC / NPCIL Kudankulam Unit 1"
 SUBSYSTEM = "Nuclear Reactor SCADA & NLDC Grid Interconnect"
 
-# Monitored processes for live host breach detection
+# Monitored processes for live host breach detection (cross-platform Windows & Linux)
 WATCHED_APPS = {
+    # Windows binaries
     "notepad.exe": "Notepad (Text Editor)",
     "calc.exe": "Windows Calculator",
     "calculatorapp.exe": "Windows Calculator",
@@ -42,7 +44,29 @@ WATCHED_APPS = {
     "powershell.exe": "PowerShell Console",
     "mspaint.exe": "MS Paint",
     "taskmgr.exe": "Task Manager",
-    "python.exe": "Python Execution Agent"
+    "python.exe": "Python Execution Agent",
+    # Linux & UNIX binaries
+    "notepad": "Notepad (Text Editor)",
+    "calc": "Calculator Tool",
+    "gnome-calculator": "GNOME Calculator",
+    "kcalc": "KDE Calculator",
+    "gedit": "GEdit Text Editor",
+    "kate": "Kate Text Editor",
+    "nano": "Nano Editor",
+    "vim": "Vim Editor",
+    "bash": "Bash Shell (Remote Egress)",
+    "sh": "POSIX Shell Execution",
+    "zsh": "Zsh Shell Execution",
+    "nc": "Netcat Reverse Shell",
+    "ncat": "Ncat Tool",
+    "netcat": "Netcat Tool",
+    "nmap": "Nmap Network Scanner",
+    "curl": "Curl Exfil Agent",
+    "wget": "Wget Exfil Agent",
+    "wireshark": "Wireshark Packet Sniffer",
+    "tshark": "TShark Packet Sniffer",
+    "python3": "Python3 Script Execution",
+    "python": "Python Script Execution",
 }
 
 # Reactor physical state
@@ -62,9 +86,12 @@ def get_running_monitored_pids():
     pids = {}
     for p in psutil.process_iter(['name', 'pid']):
         try:
-            name = p.info['name'].lower()
-            if name in WATCHED_APPS:
-                pids[p.info['pid']] = name
+            raw_name = (p.info['name'] or "").lower()
+            clean_name = raw_name[:-4] if raw_name.endswith('.exe') else raw_name
+            if raw_name in WATCHED_APPS:
+                pids[p.info['pid']] = WATCHED_APPS[raw_name]
+            elif clean_name in WATCHED_APPS:
+                pids[p.info['pid']] = WATCHED_APPS[clean_name]
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
     return pids
@@ -136,6 +163,7 @@ def interactive_threat_injector(sock):
                         "attack_type": "EXFILTRATION_BURST",
                         "burst_rate_mbps": 48.5,
                         "entropy": 7.92,
+                        "feat": [0.04, 1400, 7.92, 8.0, 0],
                         "payload": f"EXFIL FLOOD: 64KB compressed archive chunk #{i+1} exfiltrating outward!",
                         "time": now
                     }
@@ -154,6 +182,7 @@ def interactive_threat_injector(sock):
                     "attack_type": "C2_BEACONING",
                     "interval_s": 1.002,
                     "jitter": 0.001,
+                    "feat": [1.002, 64, 4.20, 1.0, 0],
                     "payload": "C2 BEACON: Covert heartbeat SYN beacon to external IP 198.51.100.23",
                     "time": now
                 }
@@ -171,6 +200,7 @@ def interactive_threat_injector(sock):
                     "attack_type": "DGA_TUNNEL",
                     "domain": "xk9q-7fa2-90bm-nvz.darknet.ru",
                     "entropy": 7.85,
+                    "feat": [0.15, 220, 7.85, 2.0, 0],
                     "payload": "DGA TUNNEL: High-entropy pseudo-random domain query detected!",
                     "time": now
                 }
@@ -191,6 +221,7 @@ def interactive_threat_injector(sock):
                     "payload": "ALARM: Primary Coolant Loop 1 Valve Restricted! Core Temp Spiking to 348.6C!",
                     "temp": 348.6,
                     "pressure": 176.2,
+                    "feat": [0.10, 400, 5.80, 3.0, 0],
                     "time": now
                 }
                 sock.sendto(json.dumps(pkt).encode("utf-8"), (TARGET_IP, TARGET_PORT))
@@ -213,7 +244,8 @@ def interactive_threat_injector(sock):
                     "app": "Mimikatz / Privilege Escalation Tool",
                     "pid": 8844,
                     "severity": "CRITICAL_RED",
-                    "payload": "ALERT: Unauthorized binary 'mimikatz.exe' executed in SCADA memory!",
+                    "feat": [0.01, 1024, 7.95, 10.0, 0],
+                    "payload": "ALERT: Unauthorized binary 'mimikatz' executed in SCADA memory!",
                     "time": now
                 }
                 sock.sendto(json.dumps(pkt).encode("utf-8"), (TARGET_IP, TARGET_PORT))
@@ -222,7 +254,21 @@ def interactive_threat_injector(sock):
         except Exception:
             pass
 
+
 def main():
+    global TARGET_IP, TARGET_PORT
+
+    parser = argparse.ArgumentParser(description="CHRONOS Nuclear SCADA & Grid Telemetry Node")
+    parser.add_argument("target", nargs="?", default=None, help="Target IP (positional, default: 127.0.0.1)")
+    parser.add_argument("--target-ip", default="127.0.0.1", help="Target Optical Diode IP (default: 127.0.0.1)")
+    parser.add_argument("--target-port", type=int, default=9999, help="Target Optical Diode Port (default: 9999)")
+    parser.add_argument("--interval", type=float, default=1.2, help="Telemetry interval in seconds (default: 1.2)")
+    parser.add_argument("--count", type=int, default=None, help="Stop after sending N packets")
+    args = parser.parse_args()
+
+    TARGET_IP = args.target or args.target_ip
+    TARGET_PORT = args.target_port
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     print("=" * 65)
@@ -233,7 +279,8 @@ def main():
 
     # Start live OS watcher & keyboard injector
     threading.Thread(target=live_process_sentry, args=(sock,), daemon=True).start()
-    threading.Thread(target=interactive_threat_injector, args=(sock,), daemon=True).start()
+    if sys.stdin.isatty():
+        threading.Thread(target=interactive_threat_injector, args=(sock,), daemon=True).start()
 
     seq = 1
     while True:
@@ -265,6 +312,7 @@ def main():
                 "event_type": "ROUTINE_SCADA",
                 "seq": seq,
                 "time": now,
+                "feat": [1.20, 280, 3.80, 1.0, 0],
                 # Physics Vitals
                 "temp_c": temp,
                 "pressure_bar": press,
@@ -286,8 +334,12 @@ def main():
         except Exception as e:
             print(f"[-] Send error: {e}")
 
+        if args.count and seq >= args.count:
+            break
+
         seq += 1
-        time.sleep(1.2)
+        time.sleep(args.interval)
+
 
 if __name__ == "__main__":
     main()

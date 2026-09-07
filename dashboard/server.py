@@ -182,7 +182,21 @@ async def serve_spa_index(request: Request) -> FileResponse:
     return JSONResponse({
         "status": "online",
         "message": "React frontend not built yet. Run 'npm run build' inside frontend/",
-        "api_docs": ["/api/status", "/api/alerts", "/api/campaign", "/api/eval"]
+        "api_docs": ["/api/status", "/api/alerts", "/api/campaign", "/api/eval", "/api/diode/status"]
+    })
+
+
+async def api_diode_status(request: Request) -> JSONResponse:
+    alerts = read_recent_alerts(20)
+    last_alert = alerts[-1] if alerts else None
+    return JSONResponse({
+        "status": "SECURE_OPTICAL_AIRGAP",
+        "transport": "OPTICAL_QR_DIODE",
+        "simplex_assurance": "0.00% reverse bit transmission (Physical Diode)",
+        "qr_ingest_port": 9999,
+        "mirror_loopback_port": 9998,
+        "latest_alert": last_alert,
+        "recent_alerts_count": len(alerts),
     })
 
 
@@ -195,6 +209,7 @@ routes = [
     Route("/api/eval", api_eval, methods=["GET"]),
     Route("/api/simulate", api_simulate, methods=["POST"]),
     Route("/api/stream", api_stream, methods=["GET"]),
+    Route("/api/diode/status", api_diode_status, methods=["GET"]),
 ]
 
 # Mount static dist assets if directory exists

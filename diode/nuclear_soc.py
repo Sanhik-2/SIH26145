@@ -16,29 +16,65 @@ Usage:
   python diode/nuclear_soc.py
 """
 
+import argparse
+import os
+from pathlib import Path
 import cv2
 import json
+import sys
 import time
 import socket
 import select
 import threading
 import numpy as np
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from features.extractor import Packet
+from features.windowing import LiveFeeder
+from models.njode import NJODE
+
+ALERT_LOG = REPO_ROOT / "alerts.jsonl"
+CHECKPOINT_PATH = REPO_ROOT / "checkpoints" / "njode_telemetry.pt"
+
 # Network configuration for loopback ingestion
 MIRROR_PORT = 9998
 
-# AI Anomaly Detection Threshold
-TAU_THRESHOLD = 0.45
+# AI Anomaly Detection Threshold Default
+TAU_THRESHOLD = 2.464
 
 class NuclearSOCReceiver:
     def __init__(self):
-        self.mode = "WEBCAM"  # "WEBCAM" or "LOOPBACK"
+        self.mode = "LOOPBACK" if not os.environ.get("DISPLAY") else "WEBCAM"
+        self.tau = TAU_THRESHOLD
+
+        # Load NJ-ODE model checkpoint
+        self.model = None
+        self.feeder = None
+        if CHECKPOINT_PATH.exists():
+            try:
+                self.model = NJODE.load(str(CHECKPOINT_PATH), device="cpu")
+                self.tau = float(self.model.threshold.item())
+                self.feeder = LiveFeeder(
+                    model=self.model,
+                    window_s=10.0,
+                    stride_s=2.0,
+                    hysteresis_n=2,
+                    hysteresis_m=3,
+                    device="cpu"
+                )
+                print(f"[✓] Nuclear SOC loaded NJ-ODE checkpoint (v{getattr(self.model, 'version', '1.1')}, tau={self.tau:.4f})")
+            except Exception as e:
+                print(f"[!] Warning: Could not load NJ-ODE checkpoint ({e}). Using default baseline.")
+
         self.stats = {
             "optical_frames": 0,
             "total_logs": 0,
             "alerts_caught": 0,
-            "anomaly_score": 0.08,
-            "tau": TAU_THRESHOLD,
+            "anomaly_score": 0.48,
+            "tau": self.tau,
             "threat_type": "NONE (BASELINE NOMINAL)"
         }
         self.latest_vitals = {
@@ -81,44 +117,87 @@ class NuclearSOCReceiver:
             self.latest_vitals["ram"] = float(payload.get("ram", payload.get("host_ram_pct", 45.0)))
 
             event_type = payload.get("type", payload.get("event_type", "ROUTINE_SCADA"))
+            ts_str = payload.get("ts", payload.get("time", time.strftime("%H:%M:%S")))
+
+            # Run through actual Continuous-Time NJ-ODE AI Model
+            feat = payload.get("feat", [1.0, 120, 3.5, 1.0, 0])
+            pkt = Packet(t=time.time(), size=int(feat[1]), payload=b"optical_payload", direction=int(feat[4]))
+            
+            if self.feeder is not None:
+                alerts = self.feeder.ingest_packet(pkt)
+                for a in alerts:
+                    self.stats["anomaly_score"] = round(a.peak_score, 3)
+                    self.stats["tau"] = round(a.threshold, 3)
+                    attr = a.attribution or {}
+                    threat_name = attr.get("threat_type", "ANOMALOUS_BURST").upper()
+
+                    rec = {
+                        "ts": ts_str,
+                        "window_t0": round(a.window_t0, 2),
+                        "window_t1": round(a.window_t1, 2),
+                        "peak_score": round(a.peak_score, 4),
+                        "threshold": round(a.threshold, 4),
+                        "is_anomaly": a.is_anomaly,
+                        "confirmed": a.confirmed,
+                        "attribution": a.attribution,
+                    }
+                    with open(ALERT_LOG, "a") as f:
+                        f.write(json.dumps(rec) + "\n")
+
+                    if a.confirmed:
+                        self.stats["alerts_caught"] += 1
+                        self.stats["threat_type"] = f"AI ATTACK CONFIRMED: {threat_name}"
+                        msg = f"NJ-ODE ALERT: Score {a.peak_score:.2f} > tau {a.threshold:.2f} | {threat_name}"
+                        self.active_alert = msg
+                        self.alert_timer = time.time() + 6.0
+                        self.event_log.append({"time": ts_str, "is_alert": True, "text": msg})
 
             if event_type == "PROCESS_EXECUTION":
                 self.stats["alerts_caught"] += 1
-                self.stats["anomaly_score"] = 1.95
+                self.stats["anomaly_score"] = max(self.stats["anomaly_score"], 999.0)
                 self.stats["threat_type"] = "UNAUTHORIZED HOST EXECUTION"
                 app = payload.get("app", "Unauthorized Binary")
                 pid = payload.get("pid", "---")
                 msg = f"HOST BREACH: '{app}' executed on SCADA Workstation! (PID: {pid})"
                 self.active_alert = msg
                 self.alert_timer = time.time() + 6.0
-                self.event_log.append({"time": payload.get("ts", time.strftime("%H:%M:%S")), "is_alert": True, "text": msg})
+                self.event_log.append({"time": ts_str, "is_alert": True, "text": msg})
+                # Log to alerts.jsonl
+                h_rec = {
+                    "ts": ts_str,
+                    "window_t0": round(time.time(), 2),
+                    "window_t1": round(time.time() + 1.0, 2),
+                    "peak_score": 999.0,
+                    "threshold": self.tau,
+                    "is_anomaly": True,
+                    "confirmed": True,
+                    "attribution": {"top_channel": "host_sentry", "threat_type": f"HOST BREACH: {app}"},
+                }
+                with open(ALERT_LOG, "a") as f:
+                    f.write(json.dumps(h_rec) + "\n")
 
             elif event_type == "CYBER_ATTACK":
-                self.stats["alerts_caught"] += 1
                 atk = payload.get("atk", payload.get("attack_type", "EXFILTRATION"))
-                self.stats["anomaly_score"] = 2.42
-                self.stats["threat_type"] = f"CYBER THREAT: {atk}"
-                msg = f"CYBER INTRUSION: {atk} detected in simplex stream!"
-                self.active_alert = msg
-                self.alert_timer = time.time() + 6.0
-                self.event_log.append({"time": payload.get("ts", time.strftime("%H:%M:%S")), "is_alert": True, "text": msg})
+                if not (self.active_alert and time.time() < self.alert_timer):
+                    self.stats["threat_type"] = f"CYBER THREAT: {atk}"
+                    msg = f"CYBER INTRUSION: {atk} detected in simplex stream!"
+                    self.active_alert = msg
+                    self.alert_timer = time.time() + 6.0
+                    self.event_log.append({"time": ts_str, "is_alert": True, "text": msg})
 
             elif event_type == "SCADA_PHYSICAL_ANOMALY":
-                self.stats["alerts_caught"] += 1
-                self.stats["anomaly_score"] = 1.78
                 self.stats["threat_type"] = "PHYSICAL VALVE TAMPERING"
                 msg = f"REACTOR ALARM: Primary Coolant Loop Temp Spiking to {self.latest_vitals['temp']}C!"
                 self.active_alert = msg
                 self.alert_timer = time.time() + 6.0
-                self.event_log.append({"time": payload.get("ts", time.strftime("%H:%M:%S")), "is_alert": True, "text": msg})
+                self.event_log.append({"time": ts_str, "is_alert": True, "text": msg})
 
-            else:
-                # Normal Telemetry
-                self.stats["anomaly_score"] = round(0.08 + np.random.uniform(-0.02, 0.03), 3)
-                self.stats["threat_type"] = "NONE (BASELINE NOMINAL)"
-                t_str = payload.get("ts", time.strftime("%H:%M:%S"))
-                msg = f"SCADA Vitals [T:{self.latest_vitals['temp']}C, P:{self.latest_vitals['press']}bar, Freq:{self.latest_vitals['freq']}Hz]"
-                self.event_log.append({"time": t_str, "is_alert": False, "text": msg})
+            elif event_type == "ROUTINE_SCADA":
+                if not (self.active_alert and time.time() < self.alert_timer):
+                    if self.stats["anomaly_score"] <= self.tau:
+                        self.stats["threat_type"] = "NONE (BASELINE NOMINAL)"
+                    msg = f"SCADA Vitals [T:{self.latest_vitals['temp']}C, P:{self.latest_vitals['press']}bar, Freq:{self.latest_vitals['freq']}Hz]"
+                    self.event_log.append({"time": ts_str, "is_alert": False, "text": msg})
 
             # Trim log history
             if len(self.event_log) > 20:
@@ -298,12 +377,21 @@ class NuclearSOCReceiver:
         return canvas
 
 def main():
+    parser = argparse.ArgumentParser(description="CHRONOS Nuclear SCADA SOC Dashboard")
+    parser.add_argument("--source", choices=["webcam", "loopback"], default=None, help="Initial ingest mode")
+    parser.add_argument("--camera-id", type=int, default=0, help="Camera device index")
+    parser.add_argument("--headless", action="store_true", help="Run without OpenCV GUI window")
+    args = parser.parse_args()
+
     soc = NuclearSOCReceiver()
-    cap = cv2.VideoCapture(0)
-    detector = cv2.QRCodeDetector()
+    if args.source:
+        soc.mode = args.source.upper()
+
+    headless = args.headless or not os.environ.get("DISPLAY")
 
     print("=" * 65)
     print("  CHRONOS: AIR-GAPPED NUCLEAR SCADA SOC DASHBOARD ACTIVE")
+    print(f"  Mode : {soc.mode} | Headless: {headless}")
     print("  Mode Options:")
     print("    - WEBCAM MODE : Optical camera scan from QR Diode screen")
     print("    - LOOPBACK    : Local simplex mirror (single-laptop presentation)")
@@ -311,46 +399,74 @@ def main():
     print("    -> Press [Q] to quit.")
     print("=" * 65 + "\n")
 
-    cv2.namedWindow("CHRONOS Nuclear Air-Gapped SOC", cv2.WINDOW_NORMAL)
+    cap = None
+    if soc.mode == "WEBCAM":
+        try:
+            cap = cv2.VideoCapture(args.camera_id)
+            if not cap.isOpened():
+                print(f"[!] Warning: Camera {args.camera_id} unavailable. Switching to LOOPBACK mode.")
+                soc.mode = "LOOPBACK"
+        except Exception:
+            soc.mode = "LOOPBACK"
 
-    while True:
-        cam_frame = None
+    detector = cv2.QRCodeDetector()
 
-        if soc.mode == "WEBCAM":
-            ret, frame = cap.read()
-            if ret:
-                cam_frame = frame
-                # Decode QR code from optical frame
-                data, bbox, _ = detector.detectAndDecode(frame)
-                if data:
-                    try:
-                        payload = json.loads(data)
-                        soc.process_incoming_packet(payload)
-                        if bbox is not None:
-                            n = len(bbox[0])
-                            for j in range(n):
-                                p1 = tuple(map(int, bbox[0][j]))
-                                p2 = tuple(map(int, bbox[0][(j + 1) % n]))
-                                cv2.line(cam_frame, p1, p2, (0, 255, 0), 3)
-                    except Exception:
-                        pass
-        else:
-            # Poll loopback packets
-            soc.poll_loopback()
+    if not headless:
+        try:
+            cv2.namedWindow("CHRONOS Nuclear Air-Gapped SOC", cv2.WINDOW_NORMAL)
+        except Exception:
+            headless = True
 
-        # Render dashboard
-        canvas = soc.render_canvas(cam_frame)
-        cv2.imshow("CHRONOS Nuclear Air-Gapped SOC", canvas)
+    try:
+        while True:
+            cam_frame = None
 
-        key = cv2.waitKey(30) & 0xFF
-        if key == ord('q'):
-            break
-        elif key == 32:  # SPACEBAR toggles mode
-            soc.mode = "LOOPBACK" if soc.mode == "WEBCAM" else "WEBCAM"
-            print(f"\n[🔄 MODE SWITCHED] Dashboard ingest mode set to: {soc.mode}\n")
+            if soc.mode == "WEBCAM" and cap is not None:
+                ret, frame = cap.read()
+                if ret:
+                    cam_frame = frame
+                    # Decode QR code from optical frame
+                    data, bbox, _ = detector.detectAndDecode(frame)
+                    if data:
+                        try:
+                            payload = json.loads(data)
+                            soc.process_incoming_packet(payload)
+                            if bbox is not None and cam_frame is not None:
+                                n = len(bbox[0])
+                                for j in range(n):
+                                    p1 = tuple(map(int, bbox[0][j]))
+                                    p2 = tuple(map(int, bbox[0][(j + 1) % n]))
+                                    cv2.line(cam_frame, p1, p2, (0, 255, 0), 3)
+                        except Exception:
+                            pass
+            else:
+                # Poll loopback packets
+                soc.poll_loopback()
 
-    cap.release()
-    cv2.destroyAllWindows()
+            if not headless:
+                # Render dashboard
+                canvas = soc.render_canvas(cam_frame)
+                cv2.imshow("CHRONOS Nuclear Air-Gapped SOC", canvas)
+
+                key = cv2.waitKey(30) & 0xFF
+                if key == ord('q'):
+                    break
+                elif key == 32:  # SPACEBAR toggles mode
+                    soc.mode = "LOOPBACK" if soc.mode == "WEBCAM" else "WEBCAM"
+                    if soc.mode == "WEBCAM" and cap is None:
+                        cap = cv2.VideoCapture(args.camera_id)
+                    print(f"\n[🔄 MODE SWITCHED] Dashboard ingest mode set to: {soc.mode}\n")
+            else:
+                time.sleep(0.1)
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if cap is not None:
+            cap.release()
+        if not headless:
+            cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     main()

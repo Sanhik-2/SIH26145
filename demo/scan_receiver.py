@@ -29,6 +29,9 @@ from models.njode import NJODE
 
 def main():
     parser = argparse.ArgumentParser(description="CHRONOS Diode Scanner & AI Live Feeder")
+    parser.add_argument("--mode", choices=["udp", "qr"], default="udp", help="Ingest mode: 'udp' socket or 'qr' optical diode")
+    parser.add_argument("--source", choices=["camera", "loopback"], default="loopback", help="QR source: 'camera' (webcam) or 'loopback' (mirrored simplex UDP)")
+    parser.add_argument("--camera-id", type=int, default=0, help="Webcam device ID (default: 0)")
     parser.add_argument("--host", default="127.0.0.1", help="UDP listen host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=9999, help="UDP listen port (default: 9999)")
     parser.add_argument("--checkpoint", default="checkpoints/njode_telemetry.pt", help="Path to versioned NJ-ODE checkpoint")
@@ -54,11 +57,11 @@ def main():
         model.threshold.copy_(torch.tensor(2.810))
 
     tau = float(model.threshold.item())
-    print(f"Model Version:         v{getattr(model, 'version', '1.0')}")
+    print(f"Model Version:         v{getattr(model, 'version', '1.1')}")
     print(f"Detection Threshold τ: {tau:.4f}")
     print(f"Window / Stride:       {args.window_s:.1f} s / {args.stride_s:.1f} s")
     print(f"Hysteresis Policy:     {args.hysteresis_n}-of-{args.hysteresis_m} windows")
-    print(f"Listening on:          udp://{args.host}:{args.port}")
+    print(f"Ingestion Mode:        {args.mode.upper()} (Source: {args.source if args.mode == 'qr' else f'udp://{args.host}:{args.port}'})")
     print(f"Streaming alerts to:   {args.alert_log}")
     print("=" * 74)
 
@@ -77,42 +80,151 @@ def main():
         device=args.device,
     )
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind((args.host, args.port))
-    sock.settimeout(1.0)
-
-    print("Awaiting packet stream from in-zone sender... (Ctrl+C to stop)\n")
-
     pkt_count = 0
-    try:
-        while True:
+
+    if args.mode == "qr":
+        # --- Optical QR Code Ingestion Mode ---
+        import cv2
+        detector = cv2.QRCodeDetector()
+        last_seq = -1
+
+        cap = None
+        source_mode = args.source
+        if source_mode == "camera":
             try:
-                data, addr = sock.recvfrom(65535)
-            except socket.timeout:
-                continue
+                cap = cv2.VideoCapture(args.camera_id)
+                if not cap.isOpened():
+                    print(f"[!] Warning: Cannot open camera {args.camera_id}. Falling back to loopback port 9998.")
+                    source_mode = "loopback"
+            except Exception as e:
+                print(f"[!] Warning: Camera error ({e}). Falling back to loopback port 9998.")
+                source_mode = "loopback"
 
-            pkt = decode_packet(data)
-            if pkt is None:
-                continue
+        loop_sock = None
+        if source_mode == "loopback":
+            loop_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            loop_sock.bind(("127.0.0.1", 9998))
+            loop_sock.settimeout(0.5)
 
-            # End of stream sentinel
-            if pkt.size == 0 and pkt.payload == b"EOS":
-                print("\n[i] Received End-of-Stream sentinel. Flushing trailing windows...")
-                trailing_alerts = feeder.flush()
-                for a in trailing_alerts:
+        print(f"[*] Optical QR Ingestion ACTIVE via {source_mode.upper()}... (Ctrl+C to stop)\n")
+
+        try:
+            while True:
+                payload = None
+                if source_mode == "camera" and cap is not None:
+                    ret, frame = cap.read()
+                    if ret and frame is not None:
+                        data, _, _ = detector.detectAndDecode(frame)
+                        if data:
+                            try:
+                                payload = json.loads(data)
+                            except Exception:
+                                pass
+                    time.sleep(0.05)
+                else:
+                    try:
+                        raw, _ = loop_sock.recvfrom(65535)
+                        payload = json.loads(raw.decode("utf-8"))
+                    except (socket.timeout, Exception):
+                        continue
+
+                if not payload:
+                    continue
+
+                seq = payload.get("seq", -1)
+                if seq == last_seq and last_seq != -1:
+                    continue
+                last_seq = seq
+
+                # Convert optical frame payload into continuous Packet stream for NJ-ODE
+                feat = payload.get("feat", [1.0, 120, 3.5, 1.0, 0])
+                pkt_size = int(feat[1]) if len(feat) > 1 else 120
+                direction = int(feat[4]) if len(feat) > 4 else 0
+                msg_bytes = payload.get("msg", "optical").encode("utf-8")
+                pkt = Packet(t=time.time(), size=pkt_size, payload=msg_bytes, direction=direction)
+
+                # Flag immediate host breach alert if critical process execution was caught
+                if payload.get("type") == "PROCESS_EXECUTION":
+                    app = payload.get("app", "Unauthorized Binary")
+                    now_str = time.strftime("%H:%M:%S")
+                    host_record = {
+                        "ts": now_str,
+                        "window_t0": round(time.time(), 2),
+                        "window_t1": round(time.time() + 1.0, 2),
+                        "peak_score": 999.0,
+                        "threshold": tau,
+                        "is_anomaly": True,
+                        "confirmed": True,
+                        "attribution": {
+                            "top_channel": "host_sentry",
+                            "threat_type": f"HOST BREACH: {app}",
+                            "channel_errors": {"host_sentry": 1.0}
+                        },
+                    }
+                    with open(alert_path, "a") as f:
+                        f.write(json.dumps(host_record) + "\n")
+                    print(f"🚨 \033[91m[HOST INTRUSION BREACH]\033[0m Caught via Optical QR: {app.upper()}")
+
+                pkt_count += 1
+                alerts = feeder.ingest_packet(pkt)
+                for a in alerts:
                     _process_alert(a, alert_path, tau)
-                continue
 
-            pkt_count += 1
-            alerts = feeder.ingest_packet(pkt)
-            for a in alerts:
-                _process_alert(a, alert_path, tau)
+        except KeyboardInterrupt:
+            print("\n\nStopping optical scanner receiver...")
+        finally:
+            if cap is not None:
+                cap.release()
+            if loop_sock is not None:
+                loop_sock.close()
+            print(f"[✓] Optical receiver stopped. Ingested {pkt_count} optical frames.")
 
-    except KeyboardInterrupt:
-        print("\n\nStopping scanner receiver...")
-    finally:
-        sock.close()
-        print(f"[✓] Receiver stopped. Processed {pkt_count} packets.")
+    else:
+        # --- Standard UDP Network Ingestion Mode ---
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind((args.host, args.port))
+        sock.settimeout(1.0)
+
+        print(f"Awaiting packet stream on udp://{args.host}:{args.port}... (Ctrl+C to stop)\n")
+
+        try:
+            while True:
+                try:
+                    data, addr = sock.recvfrom(65535)
+                except socket.timeout:
+                    continue
+
+                pkt = None
+                # Support binary packet frame
+                pkt = decode_packet(data)
+
+                # Or JSON frame with feat
+                if pkt is None:
+                    try:
+                        j_pay = json.loads(data.decode("utf-8"))
+                        feat = j_pay.get("feat", [1.0, 120, 3.5, 1.0, 0])
+                        pkt = Packet(t=time.time(), size=int(feat[1]), payload=b"json_telemetry", direction=int(feat[4]))
+                    except Exception:
+                        continue
+
+                # End of stream sentinel
+                if pkt.size == 0 and pkt.payload == b"EOS":
+                    print("\n[i] Received End-of-Stream sentinel. Flushing trailing windows...")
+                    trailing_alerts = feeder.flush()
+                    for a in trailing_alerts:
+                        _process_alert(a, alert_path, tau)
+                    continue
+
+                pkt_count += 1
+                alerts = feeder.ingest_packet(pkt)
+                for a in alerts:
+                    _process_alert(a, alert_path, tau)
+
+        except KeyboardInterrupt:
+            print("\n\nStopping scanner receiver...")
+        finally:
+            sock.close()
+            print(f"[✓] Receiver stopped. Processed {pkt_count} packets.")
 
 
 def _process_alert(alert, alert_path: Path, tau: float):
