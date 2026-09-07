@@ -137,10 +137,63 @@ def render_dashboard(frame, logs, stats, current_mode="WEBCAM"):
     return canvas
 
 
+def resolve_camera_source(cam_arg: Any = "0", phone_ip: str = "") -> Any:
+    """Resolves camera index (0, 1) or phone IP stream URL (http://<ip>:8080/video)."""
+    if phone_ip:
+        p = str(phone_ip).strip()
+        if not p.startswith("http"):
+            if ":" not in p:
+                return f"http://{p}:8080/video"
+            return f"http://{p}/video"
+        return p
+    if cam_arg is None:
+        return 0
+    c = str(cam_arg).strip()
+    if c.isdigit():
+        return int(c)
+    if c.startswith("http://") or c.startswith("https://") or c.startswith("rtsp://"):
+        return c
+    if any(ch in c for ch in [".", ":"]) and not c.isdigit():
+        if ":" in c:
+            return f"http://{c}/video"
+        return f"http://{c}:8080/video"
+    return 0
+
+
+def notify_dashboard_packet(from_id, to_id, size=128, threat=False, is_diode=False, is_alert=False, feat=None, dashboard_url="http://127.0.0.1:8501"):
+    try:
+        import urllib.request
+        event = {
+            "type": "packet_transit",
+            "from": from_id,
+            "to": to_id,
+            "size": size,
+            "threat": threat,
+            "is_diode_bridge": is_diode,
+            "is_alert": is_alert,
+            "timestamp": time.time(),
+        }
+        if feat is not None:
+            event["feat"] = feat
+        data = json.dumps(event).encode("utf-8")
+        req = urllib.request.Request(
+            f"{dashboard_url.rstrip('/')}/api/packet/event",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=0.15) as _:
+            pass
+    except Exception:
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser(description="CHRONOS Optical Diode Receiver & SOC")
     parser.add_argument("--source", choices=["camera", "loopback"], default="loopback", help="Input mode: 'camera' or 'loopback'")
-    parser.add_argument("--camera-id", type=int, default=0, help="Camera device index")
+    parser.add_argument("--camera", "--camera-id", default="0", help="Camera index (0, 1) or Phone stream URL (e.g. http://192.168.1.5:8080/video)")
+    parser.add_argument("--phone", default="", help="Phone IP for IP Webcam app (e.g. 192.168.1.5 -> http://192.168.1.5:8080/video)")
+    parser.add_argument("--dashboard-url", default="http://127.0.0.1:8501", help="SOC Dashboard URL for event syncing")
     parser.add_argument("--headless", action="store_true", help="Run in headless terminal mode")
     parser.add_argument("--alert-log", default=str(ALERT_LOG), help="Output alerts JSONL path")
     args = parser.parse_args()
@@ -148,9 +201,15 @@ def main():
     headless = args.headless or not os.environ.get("DISPLAY")
 
     # Load NJ-ODE Model & LiveFeeder
+    cam_source = resolve_camera_source(args.camera, args.phone)
+    if args.phone or (isinstance(cam_source, str) and cam_source.startswith("http")):
+        args.source = "camera"
+
     print("=" * 65)
     print("  CHRONOS: AIR-GAPPED SCAN RECEIVER & AI CORE ONLINE")
     print(f"  Mode : {args.source.upper()} | Headless: {headless}")
+    if args.source.upper() == "CAMERA":
+        print(f"  Camera Source: {cam_source} (Phone/Webcam)")
     print("=" * 65)
 
     model = None
@@ -176,11 +235,15 @@ def main():
     cap = None
     if current_mode == "CAMERA":
         try:
-            cap = cv2.VideoCapture(args.camera_id)
+            print(f"[*] Opening Optical Video Stream: {cam_source} ...")
+            cap = cv2.VideoCapture(cam_source)
             if not cap.isOpened():
-                print(f"[!] Warning: Camera {args.camera_id} unavailable. Switching to LOOPBACK mode.")
+                print(f"[!] Warning: Camera {cam_source} unavailable. Switching to LOOPBACK mode.")
                 current_mode = "LOOPBACK"
-        except Exception:
+            else:
+                print(f"[✓] Successfully connected to Optical Camera Stream: {cam_source}")
+        except Exception as e:
+            print(f"[!] Camera initialization failed ({e}). Switching to LOOPBACK mode.")
             current_mode = "LOOPBACK"
 
     loop_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -269,6 +332,16 @@ def main():
                                 }
                                 with open(alert_path, "a") as f:
                                     f.write(json.dumps(rec) + "\n")
+
+                        # Dispatch end-to-end optical transit events to React dashboard
+                        src_node = item.get("src", "ews-alpha" if stats["is_alert"] else "plc-01")
+                        pkt_size = int(feat[1])
+                        notify_dashboard_packet(src_node, "tx-diode", size=pkt_size, threat=stats["is_alert"], feat=feat, dashboard_url=args.dashboard_url)
+                        notify_dashboard_packet("tx-diode", "optical-gap", size=pkt_size, threat=stats["is_alert"], feat=feat, is_diode=True, dashboard_url=args.dashboard_url)
+                        notify_dashboard_packet("optical-gap", "rx-diode", size=pkt_size, threat=stats["is_alert"], feat=feat, is_diode=True, dashboard_url=args.dashboard_url)
+                        notify_dashboard_packet("rx-diode", "njode-core", size=pkt_size, threat=stats["is_alert"], feat=feat, dashboard_url=args.dashboard_url)
+                        if stats["is_alert"]:
+                            notify_dashboard_packet("njode-core", "soc-siem", size=pkt_size, threat=True, is_alert=True, feat=feat, dashboard_url=args.dashboard_url)
 
                         # Host process execution immediate alert
                         if item.get("event_type") == "PROCESS_EXECUTION" or item.get("type") == "PROCESS_EXECUTION":

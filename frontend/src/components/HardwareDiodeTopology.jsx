@@ -1,7 +1,9 @@
-import React, { useEffect, useRef } from 'react';
-import { ShieldCheck, Lock, Radio, Cpu, Zap } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ShieldCheck, Lock, Radio, Cpu, Zap, Camera } from 'lucide-react';
+import PhoneCameraScanner from './PhoneCameraScanner';
 
 export default function HardwareDiodeTopology({ isStreaming, isAttacking, packetRate = 12 }) {
+  const [showPhoneScanner, setShowPhoneScanner] = useState(false);
   const canvasRef = useRef(null);
 
   // Animated optical photon flow simulation on canvas
@@ -108,6 +110,13 @@ export default function HardwareDiodeTopology({ isStreaming, isAttacking, packet
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowPhoneScanner(true)}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-emerald-950/80 border border-emerald-600/70 text-emerald-400 hover:bg-emerald-900 text-xs font-mono transition-colors shadow-sm cursor-pointer"
+          >
+            <Camera className="w-3.5 h-3.5 animate-pulse" />
+            <span>📱 LIVE PHONE CAM SCANNER</span>
+          </button>
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-emerald-400 text-xs font-mono">
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>0.00% REVERSE FLOW</span>
@@ -185,6 +194,10 @@ export default function HardwareDiodeTopology({ isStreaming, isAttacking, packet
           <span className="text-emerald-400 font-medium">Physically None (0 dB)</span>
         </div>
       </div>
+
+      {showPhoneScanner && (
+        <PhoneCameraScanner onClose={() => setShowPhoneScanner(false)} />
+      )}
     </div>
   );
 }

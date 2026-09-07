@@ -45,6 +45,54 @@ MIRROR_PORT = 9998
 # AI Anomaly Detection Threshold Default
 TAU_THRESHOLD = 2.464
 
+def resolve_camera_source(cam_arg="0", phone_ip=""):
+    """Resolves camera index (0, 1) or phone IP stream URL (http://<ip>:8080/video)."""
+    if phone_ip:
+        p = str(phone_ip).strip()
+        if not p.startswith("http"):
+            if ":" not in p:
+                return f"http://{p}:8080/video"
+            return f"http://{p}/video"
+        return p
+    if cam_arg is None:
+        return 0
+    c = str(cam_arg).strip()
+    if c.isdigit():
+        return int(c)
+    if c.startswith("http://") or c.startswith("https://") or c.startswith("rtsp://"):
+        return c
+    if any(ch in c for ch in [".", ":"]) and not c.isdigit():
+        if ":" in c:
+            return f"http://{c}/video"
+        return f"http://{c}:8080/video"
+    return 0
+
+
+def notify_dashboard_packet(from_id, to_id, size=128, threat=False, is_diode=False, is_alert=False, dashboard_url="http://127.0.0.1:8501"):
+    try:
+        import urllib.request
+        event = {
+            "type": "packet_transit",
+            "from": from_id,
+            "to": to_id,
+            "size": size,
+            "threat": threat,
+            "is_diode_bridge": is_diode,
+            "is_alert": is_alert,
+            "timestamp": time.time(),
+        }
+        data = json.dumps(event).encode("utf-8")
+        req = urllib.request.Request(
+            f"{dashboard_url.rstrip('/')}/api/packet/event",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=0.15) as _:
+            pass
+    except Exception:
+        pass
+
 class NuclearSOCReceiver:
     def __init__(self):
         self.mode = "LOOPBACK" if not os.environ.get("DISPLAY") else "WEBCAM"
@@ -202,6 +250,14 @@ class NuclearSOCReceiver:
             # Trim log history
             if len(self.event_log) > 20:
                 self.event_log = self.event_log[-20:]
+
+            # Dispatch optical packet transit events to React dashboard
+            dash_url = getattr(self, "dashboard_url", "http://127.0.0.1:8501")
+            threat_flag = (self.stats["anomaly_score"] > self.tau) or (event_type in ("PROCESS_EXECUTION", "CYBER_ATTACK"))
+            notify_dashboard_packet("optical-gap", "rx-diode", size=int(feat[1]), is_diode=True, threat=threat_flag, dashboard_url=dash_url)
+            notify_dashboard_packet("rx-diode", "njode-core", size=int(feat[1]), threat=threat_flag, dashboard_url=dash_url)
+            if threat_flag:
+                notify_dashboard_packet("njode-core", "soc-siem", size=int(feat[1]), threat=True, is_alert=True, dashboard_url=dash_url)
 
     def poll_loopback(self):
         """Pulls packets from local loopback mirror for 1-laptop testing."""
@@ -378,22 +434,31 @@ class NuclearSOCReceiver:
 
 def main():
     parser = argparse.ArgumentParser(description="CHRONOS Nuclear SCADA SOC Dashboard")
-    parser.add_argument("--source", choices=["webcam", "loopback"], default=None, help="Initial ingest mode")
-    parser.add_argument("--camera-id", type=int, default=0, help="Camera device index")
+    parser.add_argument("--source", choices=["webcam", "camera", "loopback"], default=None, help="Initial ingest mode")
+    parser.add_argument("--camera", "--camera-id", default="0", help="Camera index (0, 1) or Phone stream URL (e.g. http://192.168.1.5:8080/video)")
+    parser.add_argument("--phone", default="", help="Phone IP for IP Webcam app (e.g. 192.168.1.5 -> http://192.168.1.5:8080/video)")
+    parser.add_argument("--dashboard-url", default="http://127.0.0.1:8501", help="SOC Dashboard URL for event syncing")
     parser.add_argument("--headless", action="store_true", help="Run without OpenCV GUI window")
     args = parser.parse_args()
 
     soc = NuclearSOCReceiver()
+    soc.dashboard_url = args.dashboard_url
+    cam_source = resolve_camera_source(args.camera, args.phone)
+
     if args.source:
-        soc.mode = args.source.upper()
+        soc.mode = "WEBCAM" if args.source.lower() in ("webcam", "camera") else "LOOPBACK"
+    elif args.phone or (isinstance(cam_source, str) and cam_source.startswith("http")):
+        soc.mode = "WEBCAM"
 
     headless = args.headless or not os.environ.get("DISPLAY")
 
     print("=" * 65)
     print("  CHRONOS: AIR-GAPPED NUCLEAR SCADA SOC DASHBOARD ACTIVE")
     print(f"  Mode : {soc.mode} | Headless: {headless}")
+    if soc.mode == "WEBCAM":
+        print(f"  Camera Source: {cam_source} (Phone Camera / Webcam)")
     print("  Mode Options:")
-    print("    - WEBCAM MODE : Optical camera scan from QR Diode screen")
+    print("    - WEBCAM MODE : Optical camera scan from QR Diode screen (Phone/Webcam)")
     print("    - LOOPBACK    : Local simplex mirror (single-laptop presentation)")
     print("    -> Press [SPACE] anytime on dashboard to toggle mode!")
     print("    -> Press [Q] to quit.")
@@ -402,9 +467,9 @@ def main():
     cap = None
     if soc.mode == "WEBCAM":
         try:
-            cap = cv2.VideoCapture(args.camera_id)
+            cap = cv2.VideoCapture(cam_source)
             if not cap.isOpened():
-                print(f"[!] Warning: Camera {args.camera_id} unavailable. Switching to LOOPBACK mode.")
+                print(f"[!] Warning: Camera {cam_source} unavailable. Switching to LOOPBACK mode.")
                 soc.mode = "LOOPBACK"
         except Exception:
             soc.mode = "LOOPBACK"
@@ -454,7 +519,7 @@ def main():
                 elif key == 32:  # SPACEBAR toggles mode
                     soc.mode = "LOOPBACK" if soc.mode == "WEBCAM" else "WEBCAM"
                     if soc.mode == "WEBCAM" and cap is None:
-                        cap = cv2.VideoCapture(args.camera_id)
+                        cap = cv2.VideoCapture(cam_source)
                     print(f"\n[🔄 MODE SWITCHED] Dashboard ingest mode set to: {soc.mode}\n")
             else:
                 time.sleep(0.1)

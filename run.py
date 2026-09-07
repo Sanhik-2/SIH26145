@@ -36,6 +36,7 @@ def main():
         print("  soc          Launch the modern React SOC Full-Stack Console (Default: :8501)")
         print("  receiver     Launch Diode Scanner AI Ingestion Engine (UDP receiver)")
         print("  sender       Launch Air-Gapped In-Zone Traffic Generator")
+        print("  real-packet  Launch Real Packet Network Automation Engine (Optical QR Mesh)")
         print("  qr           Launch Optical Data Diode QR Transmitter Gateway")
         print("  scan         Launch Optical QR Scanner Receiver & AI Core")
         print("  nuclear-node Launch Nuclear SCADA Telemetry & OS Process Sentry Node")
@@ -44,12 +45,14 @@ def main():
         print("  campaign     Run 300s continuous campaign benchmark (saves plot & json)")
         print("  test         Run unit and integration test suite (pytest)")
         print("\nExamples:")
-        print("  python run.py soc")
-        print("  python run.py qr")
-        print("  python run.py scan --source loopback")
-        print("  python run.py nuclear-node")
-        print("  python run.py sender --attack exfil_burst --attack-at 20")
-        print("  python run.py test")
+        print("  python run.py soc                                                # Launch React SOC Dashboard")
+        print("  python run.py qr                                                 # Display Optical QR Diode Stream on screen")
+        print("  python run.py scan --phone 192.168.1.5                           # Decode QR using Phone Camera (IP Webcam)")
+        print("  python run.py scan --camera 0                                    # Decode QR using Built-in/USB Webcam")
+        print("  python run.py real-packet --gui                                  # Real packet network + Optical QR window")
+        print("  python run.py real-packet --source camera --phone 192.168.1.5   # Real packet AI ingest from Phone Camera")
+        print("  python run.py nuclear-soc --phone 192.168.1.5                    # Air-gapped Nuclear SOC via Phone Camera")
+        print("  python run.py test                                               # Run full pytest suite")
         sys.exit(0)
 
     cmd = sys.argv[1].lower()
@@ -59,6 +62,10 @@ def main():
         # Launch the Starlette/Uvicorn fullstack server
         server_script = REPO_ROOT / "dashboard" / "server.py"
         subprocess.run([sys.executable, str(server_script)] + extra_args)
+
+    elif cmd in ("real-packet", "realpacket", "mesh", "automate"):
+        mesh_script = REPO_ROOT / "diode" / "real_packet.py"
+        subprocess.run([sys.executable, str(mesh_script)] + extra_args)
 
     elif cmd in ("qr", "gateway", "transmitter"):
         qr_script = REPO_ROOT / "diode" / "qr_gateway.py"
@@ -101,4 +108,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

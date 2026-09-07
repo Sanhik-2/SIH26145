@@ -17,7 +17,8 @@ import {
   Info,
   Database,
   Zap,
-  RotateCcw
+  RotateCcw,
+  Camera
 } from 'lucide-react';
 
 import HardwareDiodeTopology from './components/HardwareDiodeTopology';
@@ -29,10 +30,12 @@ import ScenarioControls from './components/ScenarioControls';
 import AlertStreamTable from './components/AlertStreamTable';
 import CampaignAnalytics from './components/CampaignAnalytics';
 import ArchitectureTheory from './components/ArchitectureTheory';
+import PhoneCameraScanner from './components/PhoneCameraScanner';
 
 export default function App() {
   // 8 Dedicated Tabs: 'topology' (Home) | 'telemetry' | 'detection' | 'attribution' | 'alerts' | 'diode' | 'campaign' | 'theory'
   const [activeTab, setActiveTab] = useState('topology');
+  const [showPhoneScanner, setShowPhoneScanner] = useState(false);
   const [isStreaming, setIsStreaming] = useState(true);
   const [speed, setSpeed] = useState(1.0);
   const [currentScenario, setCurrentScenario] = useState('calm');
@@ -75,6 +78,9 @@ export default function App() {
   const [hysteresisCount, setHysteresisCount] = useState(0);
   const [isConfirmedAlert, setIsConfirmedAlert] = useState(false);
 
+  // Real packet stream event from optical QR data diode
+  const [realPacketEvent, setRealPacketEvent] = useState(null);
+
   // Campaign Data (for Campaign tab)
   const [campaignData, setCampaignData] = useState({
     attack: 'EXFIL_BURST',
@@ -84,6 +90,38 @@ export default function App() {
     phase3_sustained_attack: { persistence_rate: 1.0, ttd_seconds: 1.02, mean_peak_score: 880.32 },
     phase4_recovery: { post_recovery_fpr: 0.0, recovery_seconds: 13.0, mean_peak_score: 0.498 },
   });
+
+  // Connect to SSE real-time event stream from dashboard server
+  useEffect(() => {
+    let es = null;
+    try {
+      es = new EventSource('/api/stream');
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'packet_transit') {
+            setRealPacketEvent(data);
+          } else if (data.type === 'scenario_change') {
+            if (data.scenario) setCurrentScenario(data.scenario);
+            if (data.speed) setSpeed(data.speed);
+          } else if (data.type === 'anomaly_alert' && data.alert) {
+            const a = data.alert;
+            setAlerts(prev => [a, ...prev.slice(0, 99)]);
+            if (a.confirmed) setIsConfirmedAlert(true);
+            if (a.peak_score !== undefined) setCurrentScore(a.peak_score);
+            if (a.attribution) setAttribution(a.attribution);
+          } else if (data.type === 'alert' || data.is_anomaly !== undefined) {
+            setAlerts(prev => [data, ...prev.slice(0, 99)]);
+          }
+        } catch (err) {}
+      };
+      es.onerror = () => {};
+    } catch (err) {}
+
+    return () => {
+      if (es) es.close();
+    };
+  }, []);
 
   // Fetch initial backend state & alerts if server is up
   useEffect(() => {
@@ -384,6 +422,16 @@ export default function App() {
 
           {/* Live System Indicators */}
           <div className="flex items-center gap-2 font-mono text-xs flex-shrink-0">
+            {/* Live Phone Camera Scanner Trigger */}
+            <button
+              onClick={() => setShowPhoneScanner(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-950/70 border border-emerald-600/60 text-emerald-400 hover:bg-emerald-900 text-xs font-mono transition-colors shadow-sm cursor-pointer"
+              title="Open Phone Camera Optical Scanner"
+            >
+              <Camera className="w-3.5 h-3.5 animate-pulse" />
+              <span className="hidden sm:inline">📱 SCAN QR</span>
+            </button>
+
             {/* Auto-Simulation Tour Button */}
             <button
               onClick={() => setAutoTour(a => !a)}
@@ -446,6 +494,8 @@ export default function App() {
                 currentScenario={currentScenario}
                 score={currentScore}
                 tau={systemStatus.tau}
+                packetEvent={realPacketEvent}
+                isStreaming={isStreaming}
               />
             </div>
             <ScenarioControls
@@ -676,6 +726,10 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {showPhoneScanner && (
+        <PhoneCameraScanner onClose={() => setShowPhoneScanner(false)} />
+      )}
     </div>
   );
 }

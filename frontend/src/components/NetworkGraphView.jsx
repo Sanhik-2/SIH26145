@@ -185,13 +185,24 @@ const INITIAL_EDGES = [
   { from: 'sync-srv', to: 'soc-siem' },
 ];
 
-export default function NetworkGraphView({ currentScenario = 'calm', score = 0.48, tau = 2.81 }) {
+export default function NetworkGraphView({ 
+  currentScenario = 'calm', 
+  score = 0.48, 
+  tau = 2.81,
+  packetEvent = null,
+  isStreaming = true,
+}) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
 
   // Nodes state with physics coordinates
   const [nodes, setNodes] = useState(INITIAL_NODES);
   const [edges] = useState(INITIAL_EDGES);
+
+  // Active flying real packets (ONLY populated when real packets flow between systems)
+  const activeParticlesRef = useRef([]);
+  const lastPacketRef = useRef(null);
+  const [inFlightCount, setInFlightCount] = useState(0);
 
   // Mouse interaction state
   const [hoveredNode, setHoveredNode] = useState(null);
@@ -440,10 +451,6 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     let animationId;
-
-    // Packet particles traveling along edges
-    const particles = [];
-
     let resizeObserver;
     const resize = () => {
       const parent = canvas.parentElement;
@@ -457,15 +464,92 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
       resizeObserver.observe(canvas.parentElement);
     }
 
-    // Seed particles per edge with uniform spacing
-    edges.forEach((edge, eIdx) => {
-      for (let i = 0; i < 2; i++) {
-        particles.push({
-          edgeIndex: eIdx,
-          progress: i * 0.5 + Math.random() * 0.1,
+    // Handle real packet events from backend or prop
+    const spawnEdgePacket = (from, to, threat = false, isDiode = false, isAlert = false, size = 64) => {
+      const edgeIdx = edges.findIndex(e => e.from === from && e.to === to);
+      if (edgeIdx !== -1) {
+        activeParticlesRef.current.push({
+          edgeIndex: edgeIdx,
+          progress: 0.0,
+          speedMultiplier: threat ? 1.6 : (isDiode ? 1.35 : 1.1),
+          isThreat: threat,
+          isDiodeBridge: isDiode || edges[edgeIdx].isDiodeBridge,
+          isAlert: isAlert,
+          size: Math.max(1.8, Math.min(3.2, Math.log2(size || 64) * 0.35)),
         });
       }
-    });
+    };
+
+    // Autonomous discrete packet trigger when in standalone simulation mode
+    let simTimer;
+    let simStep = 0;
+    if (isStreaming) {
+      simTimer = setInterval(() => {
+        simStep++;
+        const lastTs = lastPacketRef.current?.timestamp;
+        const timeSinceReal = lastTs ? (Date.now() - lastTs * 1000) : 999999;
+        
+        // If real backend packets are actively flowing, let them drive the animation
+        if (timeSinceReal < 2200) {
+          return;
+        }
+
+        // Discrete pulse schedule (packets only flow when actual event occurs)
+        if (simStep % 3 === 0) {
+          spawnEdgePacket('plc-01', 'tx-diode', false, false, false, 128);
+          setTimeout(() => spawnEdgePacket('tx-diode', 'optical-gap', false, true, false, 128), 180);
+          setTimeout(() => spawnEdgePacket('optical-gap', 'rx-diode', false, true, false, 128), 340);
+          setTimeout(() => spawnEdgePacket('rx-diode', 'njode-core', false, false, false, 128), 500);
+        }
+
+        if (simStep % 4 === 0) {
+          const isDDoS = currentScenario === 'ddos_flood';
+          spawnEdgePacket('plc-02', 'tx-diode', isDDoS, false, false, isDDoS ? 64 : 96);
+          setTimeout(() => spawnEdgePacket('tx-diode', 'optical-gap', isDDoS, true, false, 64), 180);
+          setTimeout(() => spawnEdgePacket('optical-gap', 'rx-diode', isDDoS, true, false, 64), 340);
+          setTimeout(() => spawnEdgePacket('rx-diode', 'njode-core', isDDoS, false, false, 64), 500);
+          if (isDDoS) {
+            setTimeout(() => spawnEdgePacket('njode-core', 'soc-siem', true, false, true, 64), 680);
+          }
+        }
+
+        if (simStep % 6 === 0) {
+          const isDGA = currentScenario === 'dga_tunnel';
+          spawnEdgePacket('db-historian', 'tx-diode', isDGA, false, false, isDGA ? 150 : 180);
+          setTimeout(() => spawnEdgePacket('tx-diode', 'optical-gap', isDGA, true, false, 150), 180);
+          setTimeout(() => spawnEdgePacket('optical-gap', 'rx-diode', isDGA, true, false, 150), 340);
+          setTimeout(() => spawnEdgePacket('rx-diode', 'njode-core', isDGA, false, false, 150), 500);
+          if (isDGA) {
+            setTimeout(() => spawnEdgePacket('njode-core', 'soc-siem', true, false, true, 150), 680);
+          }
+        }
+
+        if (currentScenario === 'exfil_burst') {
+          spawnEdgePacket('ews-alpha', 'tx-diode', true, false, false, 1400);
+          setTimeout(() => spawnEdgePacket('tx-diode', 'optical-gap', true, true, false, 1400), 120);
+          setTimeout(() => spawnEdgePacket('optical-gap', 'rx-diode', true, true, false, 1400), 240);
+          setTimeout(() => spawnEdgePacket('rx-diode', 'njode-core', true, false, false, 1400), 360);
+          setTimeout(() => spawnEdgePacket('njode-core', 'soc-siem', true, false, true, 1400), 480);
+        } else if (currentScenario === 'c2_beacon' && simStep % 8 === 0) {
+          spawnEdgePacket('ews-alpha', 'tx-diode', true, false, false, 256);
+          setTimeout(() => spawnEdgePacket('tx-diode', 'optical-gap', true, true, false, 256), 180);
+          setTimeout(() => spawnEdgePacket('optical-gap', 'rx-diode', true, true, false, 256), 340);
+          setTimeout(() => spawnEdgePacket('rx-diode', 'njode-core', true, false, false, 256), 500);
+          setTimeout(() => spawnEdgePacket('njode-core', 'soc-siem', true, false, true, 256), 680);
+        } else if (currentScenario === 'portscan' && simStep % 2 === 0) {
+          spawnEdgePacket('ews-alpha', 'tx-diode', true, false, false, 54);
+          setTimeout(() => spawnEdgePacket('tx-diode', 'optical-gap', true, true, false, 54), 140);
+          setTimeout(() => spawnEdgePacket('optical-gap', 'rx-diode', true, true, false, 54), 280);
+          setTimeout(() => spawnEdgePacket('rx-diode', 'njode-core', true, false, false, 54), 420);
+          setTimeout(() => spawnEdgePacket('njode-core', 'soc-siem', true, false, true, 54), 560);
+        } else if (currentScenario === 'tls_c2' && simStep % 6 === 0) {
+          spawnEdgePacket('ews-alpha', 'tx-diode', true, false, false, 512);
+          setTimeout(() => spawnEdgePacket('tx-diode', 'optical-gap', true, true, false, 512), 180);
+          setTimeout(() => spawnEdgePacket('optical-gap', 'rx-diode', true, true, false, 512), 340);
+          setTimeout(() => spawnEdgePacket('rx-diode', 'njode-core', true, false, false, 512), 500);
+        }
+      }, 120);
+    }
 
     const render = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -555,31 +639,39 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
         ctx.setLineDash([]);
       });
 
-      // 4. Stable, Constant-Velocity Packet Flows with 2-Step Trailing Fade
-      particles.forEach((p) => {
+      // 4. Real Packet Flows: Rendered ONLY when actual packets are actively traversing links
+      const particles = activeParticlesRef.current;
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
         const edge = edges[p.edgeIndex];
-        if (!edge) return;
+        if (!edge) {
+          particles.splice(i, 1);
+          continue;
+        }
         const source = nodes.find(n => n.id === edge.from);
         const target = nodes.find(n => n.id === edge.to);
-        if (!source || !target) return;
+        if (!source || !target) {
+          particles.splice(i, 1);
+          continue;
+        }
 
         const dx = target.x - source.x;
         const dy = target.y - source.y;
         const edgeDist = Math.hypot(dx, dy) || 1;
 
-        // Uniform physical velocity: exactly 45 px/sec (0.75 px/frame at 60 FPS)
-        const pxPerFrame = 0.75;
+        // Physical velocity: advances toward target and vanishes upon arrival
+        const pxPerFrame = 1.35 * (p.speedMultiplier || 1.0);
         p.progress += pxPerFrame / edgeDist;
-        if (p.progress > 1.0) p.progress -= 1.0;
 
-        const sourceStatus = getMalwareStatus(source.id);
-        const isThreat = sourceStatus.isInfected || (edge.isDiodeBridge && currentScenario !== 'calm');
+        if (p.progress >= 1.0) {
+          // Packet reached destination system! Removed from transit.
+          particles.splice(i, 1);
+          continue;
+        }
 
-        // Color Theory Palette:
-        // Crimson (244, 63, 94) for threats, Sky (56, 189, 248) for diode simplex, Slate (148, 163, 184) for normal
-        const rgb = isThreat 
+        const rgb = p.isThreat 
           ? '244, 63, 94' 
-          : edge.isDiodeBridge 
+          : p.isDiodeBridge 
           ? '56, 189, 248' 
           : '148, 163, 184';
 
@@ -587,32 +679,32 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
         const px0 = source.x + dx * p.progress;
         const py0 = source.y + dy * p.progress;
         ctx.beginPath();
-        ctx.arc(px0, py0, isThreat ? 2.5 : 2.0, 0, Math.PI * 2);
+        ctx.arc(px0, py0, p.isThreat ? p.size + 0.8 : p.size, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(${rgb}, 0.95)`;
         ctx.fill();
 
-        // Trail Step 1 (4px behind)
-        const p1 = p.progress - (4 / edgeDist);
+        // Trail Step 1 (5px behind)
+        const p1 = p.progress - (5 / edgeDist);
         if (p1 >= 0) {
           const px1 = source.x + dx * p1;
           const py1 = source.y + dy * p1;
           ctx.beginPath();
-          ctx.arc(px1, py1, 1.5, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(${rgb}, 0.35)`;
+          ctx.arc(px1, py1, p.size * 0.75, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${rgb}, 0.40)`;
           ctx.fill();
         }
 
-        // Trail Step 2 (8px behind)
-        const p2 = p.progress - (8 / edgeDist);
+        // Trail Step 2 (10px behind)
+        const p2 = p.progress - (10 / edgeDist);
         if (p2 >= 0) {
           const px2 = source.x + dx * p2;
           const py2 = source.y + dy * p2;
           ctx.beginPath();
-          ctx.arc(px2, py2, 1.0, 0, Math.PI * 2);
+          ctx.arc(px2, py2, p.size * 0.45, 0, Math.PI * 2);
           ctx.fillStyle = `rgba(${rgb}, 0.15)`;
           ctx.fill();
         }
-      });
+      }
 
       // 5. Draw Nodes (Minimalist Matte Surface with Status Pip)
       nodes.forEach((node) => {
@@ -688,9 +780,36 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
     return () => {
       window.removeEventListener('resize', resize);
       if (resizeObserver) resizeObserver.disconnect();
+      if (simTimer) clearInterval(simTimer);
       cancelAnimationFrame(animationId);
     };
-  }, [nodes, edges, currentScenario, hoveredNode, selectedNode, transform]);
+  }, [nodes, edges, currentScenario, hoveredNode, selectedNode, transform, isStreaming]);
+
+  // Trigger particle animation when a live real packet event is received
+  useEffect(() => {
+    if (!packetEvent) return;
+    lastPacketRef.current = packetEvent;
+    const fromId = packetEvent.from;
+    const toId = packetEvent.to;
+    const isThreat = !!packetEvent.threat;
+    const isDiodeBridge = !!packetEvent.is_diode_bridge;
+    const isAlert = !!packetEvent.is_alert;
+    const size = packetEvent.size || 64;
+
+    const edgeIdx = edges.findIndex(e => e.from === fromId && e.to === toId);
+    if (edgeIdx !== -1) {
+      activeParticlesRef.current.push({
+        edgeIndex: edgeIdx,
+        progress: 0.0,
+        speedMultiplier: isThreat ? 1.6 : (isDiodeBridge ? 1.35 : 1.1),
+        isThreat: isThreat,
+        isDiodeBridge: isDiodeBridge || edges[edgeIdx].isDiodeBridge,
+        isAlert: isAlert,
+        size: Math.max(1.8, Math.min(3.2, Math.log2(size) * 0.35)),
+      });
+      setInFlightCount(activeParticlesRef.current.length);
+    }
+  }, [packetEvent, edges]);
 
   // Convert mouse event coordinates to graph world space
   const getWorldCoord = (e) => {
