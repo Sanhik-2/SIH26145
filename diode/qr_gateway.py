@@ -110,8 +110,8 @@ def generate_qr_matrix(data_str, size=(440, 440)):
     """Generates a high-contrast QR image."""
     qr = qrcode.QRCode(
         error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=7,
-        border=2,
+        box_size=8,
+        border=4,
     )
     qr.add_data(data_str)
     qr.make(fit=True)

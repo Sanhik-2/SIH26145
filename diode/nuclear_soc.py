@@ -398,12 +398,24 @@ class NuclearSOCReceiver:
 
 def main():
     soc = NuclearSOCReceiver()
-    cap = cv2.VideoCapture(0)
-    detector = cv2.QRCodeDetector()
+    cam_id = 0
+    if len(sys.argv) > 1 and sys.argv[1].isdigit():
+        cam_id = int(sys.argv[1])
+    elif "--camera" in sys.argv:
+        c_idx = sys.argv.index("--camera")
+        if c_idx + 1 < len(sys.argv):
+            cam_id = int(sys.argv[c_idx + 1])
+
+    cap = cv2.VideoCapture(cam_id)
+    if hasattr(cv2, "QRCodeDetectorAruco"):
+        detector = cv2.QRCodeDetectorAruco()
+    else:
+        detector = cv2.QRCodeDetector()
 
     print("=" * 68)
     print("  CHRONOS: AIR-GAPPED NUCLEAR SCADA SOC DASHBOARD ACTIVE")
     print("  PS #26145 Simplex Optical Ingestion Online")
+    print(f"  Webcam Device : Camera ID #{cam_id}")
     print("  Mode Options:")
     print("    - WEBCAM MODE : Optical camera scan from QR Diode screen")
     print("    - LOOPBACK    : Local simplex mirror (single-laptop presentation)")
@@ -425,6 +437,11 @@ def main():
                     try:
                         payload = json.loads(data)
                         soc.process_incoming_packet(payload)
+                        seq_no = payload.get("seq", 0)
+                        p_val = payload.get("p", 0)
+                        t_val = payload.get("tavg", 0)
+                        flow_val = payload.get("flow", 0)
+                        print(f"[OPTICAL RX] Frame #{seq_no} Decoded via Camera | P: {p_val} bar | Tavg: {t_val} C | Flow: {flow_val} kg/s")
                         if bbox is not None:
                             n = len(bbox[0])
                             for j in range(n):
