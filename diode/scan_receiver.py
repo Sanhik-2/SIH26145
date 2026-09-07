@@ -229,7 +229,10 @@ def main():
     alert_path = Path(args.alert_log)
     alert_path.parent.mkdir(parents=True, exist_ok=True)
 
-    detector = cv2.QRCodeDetector()
+    if hasattr(cv2, "QRCodeDetectorAruco"):
+        detector = cv2.QRCodeDetectorAruco()
+    else:
+        detector = cv2.QRCodeDetector()
     current_mode = args.source.upper()
 
     cap = None

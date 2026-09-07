@@ -642,12 +642,14 @@ def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
                 break
-        else:
-            status_tag = "🚨 ANOMALY" if is_threat else "✅ NOMINAL"
-            sys.stdout.write(
-                f"\r[{status_tag}] Diode QR #{sequence_id:04d} | State: {optical_payload['state']} | P: {optical_payload['p']}bar | Flow: {optical_payload['flow']}kg/s | CPU: {optical_payload['cpu']}% "
-            )
-            sys.stdout.flush()
+
+        # Terminal live telemetry output (Exact Docker plant telemetry)
+        p_val = optical_payload.get('p', 155.5)
+        t_val = optical_payload.get('tavg', 310.0)
+        flow_val = optical_payload.get('flow', 16500.0)
+        mw_val = optical_payload.get('mw', 955.0)
+        state_val = optical_payload.get('state', 'NOMINAL_FULL_POWER')
+        print(f"[SCADA DIODE TX] Frame #{sequence_id:04d} | Kudankulam Unit 1 PWR | Pressure: {p_val:.1f} bar | Core Temp: {t_val:.1f} °C | Flow: {flow_val:.1f} kg/s | Output: {mw_val:.1f} MWe | State: {state_val}")
 
         sequence_id += 1
         elapsed = time.time() - start_time

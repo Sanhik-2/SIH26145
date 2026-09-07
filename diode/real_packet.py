@@ -30,6 +30,13 @@ import socket
 import sys
 import threading
 import time
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 from typing import Dict, List, Optional, Any, Tuple
 import urllib.request
 import urllib.error
@@ -149,7 +156,10 @@ class RealPacketMesh:
         self.notifier = DashboardNotifier(base_url=dashboard_url)
 
         # In-Memory optical diode state
-        self.qr_detector = cv2.QRCodeDetector()
+        if hasattr(cv2, "QRCodeDetectorAruco"):
+            self.qr_detector = cv2.QRCodeDetectorAruco()
+        else:
+            self.qr_detector = cv2.QRCodeDetector()
         self.seq_id = 1
         self.last_pkt_time = time.time()
         self.current_score = 0.48
@@ -213,7 +223,8 @@ class RealPacketMesh:
         raw_pkt: Packet,
         is_threat: bool = False,
         threat_type: str = "calm",
-        proto: str = "SCADA"
+        proto: str = "SCADA",
+        scada_meta: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Routes an authentic packet from an In-Zone system through the physical simplex diode,
@@ -259,6 +270,13 @@ class RealPacketMesh:
             "size": raw_pkt.size,
             "hash": hashlib.md5(raw_pkt.payload or b"").hexdigest()[:8]
         }
+        if scada_meta:
+            optical_payload["p"] = scada_meta.get("p", 155.5)
+            optical_payload["tavg"] = scada_meta.get("tavg", 310.0)
+            optical_payload["flow"] = scada_meta.get("flow", 16515.8)
+            optical_payload["mw"] = scada_meta.get("mw", 955.0)
+            optical_payload["state"] = scada_meta.get("state", "NOMINAL_FULL_POWER")
+
         encoded_str = json.dumps(optical_payload)
         self.seq_id += 1
 
@@ -382,11 +400,12 @@ class RealPacketMesh:
 
 def run_packet_mesh(
     scenario: str = "calm",
-    duration: float = 30.0,
+    duration: float = 0.0,
     speed: float = 1.0,
     dashboard_url: str = DEFAULT_DASHBOARD_URL,
     headless: bool = True,
-    device: str = "cpu"
+    device: str = "cpu",
+    scada_host: str = "127.0.0.1"
 ):
     """Executes the automated real-packet mesh session across all systems."""
     print("=" * 72)
@@ -395,6 +414,7 @@ def run_packet_mesh(
     print(f"  Active Scenario:      {scenario.upper()}")
     print(f"  Duration:             {'CONTINUOUS' if duration <= 0 else f'{duration:.1f}s'}")
     print(f"  Speed Multiplier:     {speed:.1f}x")
+    print(f"  Node 1 SCADA Host:    http://{scada_host}:8080")
     print(f"  Dashboard SSE Sync:   {dashboard_url}")
     print(f"  Headless Optical:     {headless}")
     print(f"  Simplex Air Gap:      PHYSICAL OPTICAL QR EGRESS (0.00% RETURN BITS)")
@@ -402,8 +422,42 @@ def run_packet_mesh(
 
     mesh = RealPacketMesh(dashboard_url=dashboard_url, headless=headless, speed=speed, device=device)
 
+    # Live SCADA polling from Node 1 Docker container
+    scada_vitals = {
+        "p": 155.5,
+        "tavg": 310.0,
+        "flow": 16515.8,
+        "mw": 955.0,
+        "state": "NOMINAL_FULL_POWER",
+        "online": False
+    }
+    last_scada_poll = -999.0
+
+    def poll_node1_scada():
+        nonlocal scada_vitals
+        try:
+            url = f"http://{scada_host}:8080"
+            req = urllib.request.Request(url, headers={"User-Agent": "ChronosRealPacket/1.0"})
+            with urllib.request.urlopen(req, timeout=0.4) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                scada_vitals["p"] = round(float(data.get("pressure_bar", 155.5)), 1)
+                scada_vitals["tavg"] = round(float(data.get("core_temp_c", 310.0)), 1)
+                scada_vitals["flow"] = round(float(data.get("coolant_flow_kgs", 16515.8)), 0)
+                scada_vitals["mw"] = round(float(data.get("output_mwe", 955.0)), 1)
+                scada_vitals["state"] = data.get("reactor_state", "NOMINAL_FULL_POWER")
+                scada_vitals["online"] = True
+        except Exception:
+            scada_vitals["online"] = False
+
+    poll_node1_scada()
+    if scada_vitals["online"]:
+        print(f"[✓] Connected to Node 1 Docker SCADA: BARC Kudankulam Unit 1 (PWR) | P: {scada_vitals['p']} bar | Flow: {scada_vitals['flow']} kg/s\n")
+    else:
+        print(f"[i] Node 1 SCADA container not detected at http://{scada_host}:8080 (Falling back to simulated SCADA streams)\n")
+
     start_t = time.time()
     total_packets = 0
+    last_printed_pkt = -1
     attack_active = scenario != "calm"
 
     # Pre-generate or stream packets based on scenario
@@ -427,6 +481,11 @@ def run_packet_mesh(
 
             now_sim = elapsed
 
+            # Periodically sync vitals from Node 1 Docker SCADA container
+            if now_sim - last_scada_poll >= 0.5:
+                last_scada_poll = now_sim
+                poll_node1_scada()
+
             # 1. SCADA PLC-01 (Governor) periodic telemetry (every 0.25s)
             if now_sim >= next_plc1:
                 next_plc1 = now_sim + (0.25 / speed)
@@ -436,7 +495,7 @@ def run_packet_mesh(
                     payload=b"\x00\x01\x00\x00\x00\x06\x01\x04\x00\x00\x00\x0A" + os.urandom(116),
                     direction=0
                 )
-                mesh.route_packet("plc-01", "tx-diode", p, is_threat=False, proto="MODBUS_SCADA")
+                mesh.route_packet("plc-01", "tx-diode", p, is_threat=False, proto="MODBUS_SCADA", scada_meta=scada_vitals)
                 total_packets += 1
 
             # 2. SCADA PLC-02 (Cooling Loop) periodic telemetry (every 0.33s)
@@ -449,7 +508,7 @@ def run_packet_mesh(
                     payload=b"\x05\x64" + os.urandom(62 if is_ddos_target else 94),
                     direction=1 if is_ddos_target else 0
                 )
-                mesh.route_packet("plc-02", "tx-diode", p, is_threat=is_ddos_target, threat_type=scenario, proto="DNP3_COOLING")
+                mesh.route_packet("plc-02", "tx-diode", p, is_threat=is_ddos_target, threat_type=scenario, proto="DNP3_COOLING", scada_meta=scada_vitals)
                 total_packets += 1
 
             # 3. Process Historian DB sync (every 0.5s)
@@ -543,24 +602,31 @@ def run_packet_mesh(
 
             # GUI optical display update
             if not headless and mesh.last_qr_frame is not None:
-                display_frame = cv2.copyMakeBorder(mesh.last_qr_frame, 55, 35, 20, 20, cv2.BORDER_CONSTANT, value=(20, 20, 30))
+                display_frame = cv2.copyMakeBorder(mesh.last_qr_frame, 55, 45, 20, 20, cv2.BORDER_CONSTANT, value=(20, 20, 30))
                 cv2.rectangle(display_frame, (0, 0), (display_frame.shape[1], 50), (15, 15, 22), -1)
                 cv2.putText(display_frame, "CHRONOS: OPTICAL DATA DIODE TRANSMITTER", (12, 22),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 240, 255), 1)
                 cv2.putText(display_frame, "POINT PHONE CAMERA HERE TO SCAN AIR GAP", (12, 40),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 255, 180), 1)
-                cv2.putText(display_frame, f"Pkt #{total_packets} | Scenario: {scenario.upper()}", (12, display_frame.shape[0] - 12),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, (180, 180, 180), 1)
+                node1_label = f"Kudankulam PWR: P={scada_vitals['p']:.1f}bar | Tavg={scada_vitals['tavg']:.1f}C | Flow={scada_vitals['flow']:.0f}kg/s" if scada_vitals["online"] else f"Scenario: {scenario.upper()}"
+                cv2.putText(display_frame, f"Frame #{total_packets} | {node1_label}", (12, display_frame.shape[0] - 25),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.36, (0, 255, 180) if scada_vitals["online"] else (180, 180, 180), 1)
+                cv2.putText(display_frame, f"Power: {scada_vitals['mw']} MWe | State: {scada_vitals['state']} | Air-Gap: PHYSICAL SIMPLEX EGRESS", (12, display_frame.shape[0] - 8),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.33, (0, 240, 255), 1)
                 cv2.imshow("CHRONOS Real Packet Optical Emitter", display_frame)
                 if cv2.waitKey(10) & 0xFF == ord('q'):
                     break
 
-            # Terminal live status badge
-            status_tag = "🚨 ANOMALY ALERT" if mesh.confirmed_alert else "✅ BENIGN CALM"
-            sys.stdout.write(
-                f"\r[{status_tag}] T+{elapsed:4.1f}s | Packets Routed: {total_packets:5d} | Score: {mesh.current_score:6.3f} / τ: {mesh.tau:.2f} "
-            )
-            sys.stdout.flush()
+            # Node 2 Transmitter Terminal: Exact Docker SCADA Telemetry Output
+            if total_packets != last_printed_pkt and total_packets % 2 == 0:
+                last_printed_pkt = total_packets
+                p_val = scada_vitals.get("p", 155.5)
+                t_val = scada_vitals.get("tavg", 310.0)
+                flow_val = scada_vitals.get("flow", 16515.8)
+                mw_val = scada_vitals.get("mw", 955.0)
+                state_val = scada_vitals.get("state", "NOMINAL_FULL_POWER")
+                src_label = "Node 1 (Kudankulam Unit 1 PWR)" if scada_vitals.get("online") else "SCADA Digital Twin"
+                print(f"[SCADA DIODE TX] Frame #{total_packets:04d} | {src_label} | Pressure: {p_val:.1f} bar | Core Temp: {t_val:.1f} °C | Flow: {flow_val:.1f} kg/s | Output: {mw_val:.1f} MWe | State: {state_val}")
 
             time.sleep(0.01)
 
@@ -626,7 +692,10 @@ def run_camera_receiver(
         notifier.close()
         return
 
-    detector = cv2.QRCodeDetector()
+    if hasattr(cv2, "QRCodeDetectorAruco"):
+        detector = cv2.QRCodeDetectorAruco()
+    else:
+        detector = cv2.QRCodeDetector()
     decoded_count = 0
     last_seq = -1
 
@@ -762,8 +831,9 @@ def main():
     parser = argparse.ArgumentParser(description="CHRONOS Real Packet Optical QR Network Mesh Runner")
     parser.add_argument("--source", choices=["mesh", "camera"], default="mesh", help="Mode: 'mesh' (generate & route real packets) or 'camera' (optical camera receiver)")
     parser.add_argument("--scenario", choices=["calm", "exfil_burst", "c2_beacon", "ddos_flood", "dga_tunnel", "portscan", "tls_c2"], default="calm", help="Active traffic / attack scenario")
-    parser.add_argument("--duration", type=float, default=20.0, help="Scenario duration in seconds (0 for continuous)")
+    parser.add_argument("--duration", type=float, default=0.0, help="Scenario duration in seconds (0 for continuous)")
     parser.add_argument("--speed", type=float, default=1.0, help="Simulation speed multiplier")
+    parser.add_argument("--scada-host", default="127.0.0.1", help="Node 1 Docker SCADA host IP (default: 127.0.0.1)")
     parser.add_argument("--camera", "--camera-id", default="0", help="Camera index (0, 1) or Phone stream URL (e.g. http://192.168.1.5:8080/video)")
     parser.add_argument("--phone", default="", help="Phone IP for IP Webcam app (e.g. 192.168.1.5 -> http://192.168.1.5:8080/video)")
     parser.add_argument("--dashboard-url", default=DEFAULT_DASHBOARD_URL, help="SOC Dashboard URL for live event SSE syncing")
@@ -792,7 +862,8 @@ def main():
             speed=args.speed,
             dashboard_url=args.dashboard_url,
             headless=headless,
-            device=args.device
+            device=args.device,
+            scada_host=args.scada_host
         )
 
 
