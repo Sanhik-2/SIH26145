@@ -103,7 +103,7 @@ with tab1:
         st.dataframe(
             show[["flag", "time", "score", "tau", "flagged", "confirmed",
                   "channel", "threat", "n_obs"]],
-            use_container_width=True, height=380)
+            width="stretch", height=380)
 
 # ---------------- campaign tab ----------------
 with tab2:
@@ -144,7 +144,7 @@ with tab3:
         if campaigns:
             df_eval = pd.DataFrame(campaigns).T
             st.subheader("Attack Detection & Attribution Performance")
-            st.dataframe(df_eval, use_container_width=True)
+            st.dataframe(df_eval, width="stretch")
         st.metric("Benign False Positive Rate (FPR)", f"{data.get('benign_fpr', 0)*100:.1f}%", delta=f"τ = {data.get('threshold_tau', 2.810):.3f}")
         with st.expander("Raw Evaluation JSON", expanded=False):
             st.json(data)
