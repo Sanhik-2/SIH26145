@@ -316,10 +316,8 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
 
     const resize = () => {
       const parent = canvas.parentElement;
-      if (parent) {
-        canvas.width = parent.clientWidth;
-        canvas.height = parent.clientHeight;
-      }
+      canvas.width = (parent && parent.clientWidth > 0) ? parent.clientWidth : 960;
+      canvas.height = (parent && parent.clientHeight > 0) ? parent.clientHeight : 480;
     };
     resize();
     window.addEventListener('resize', resize);
@@ -680,7 +678,7 @@ export default function NetworkGraphView({ currentScenario = 'calm', score = 0.4
           <div
             className="absolute z-30 pointer-events-none p-3 rounded-xl bg-slate-950/90 border border-slate-700/80 backdrop-blur-md shadow-2xl font-mono text-xs max-w-xs transition-opacity duration-150"
             style={{
-              left: `${Math.min(hoveredNode.x * transform.k + transform.x + 20, canvasRef.current?.width - 240 || 200)}px`,
+              left: `${Math.max(20, Math.min(hoveredNode.x * transform.k + transform.x + 20, 680))}px`,
               top: `${Math.max(hoveredNode.y * transform.k + transform.y - 40, 20)}px`,
             }}
           >

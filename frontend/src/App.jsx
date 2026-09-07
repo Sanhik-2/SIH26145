@@ -12,7 +12,11 @@ import {
   RefreshCw,
   ExternalLink,
   Flame,
-  Terminal
+  Terminal,
+  Layers,
+  Sparkles,
+  PlayCircle,
+  StopCircle
 } from 'lucide-react';
 
 import HardwareDiodeTopology from './components/HardwareDiodeTopology';
@@ -31,6 +35,13 @@ export default function App() {
   const [isStreaming, setIsStreaming] = useState(true);
   const [speed, setSpeed] = useState(1.0);
   const [currentScenario, setCurrentScenario] = useState('calm'); // 'calm' | 'exfil_burst' | 'c2_beacon' | 'dga_tunnel'
+  const [autoTour, setAutoTour] = useState(true); // Autonomous simulation tour
+  const [autoTourPhase, setAutoTourPhase] = useState({
+    name: 'Phase 1/6: Calm Baseline (FPR 0.0%)',
+    remaining: 8,
+    stepIndex: 1,
+    totalSteps: 6,
+  });
 
   // Model & System Status
   const [systemStatus, setSystemStatus] = useState({
@@ -109,6 +120,44 @@ export default function App() {
     const interval = setInterval(fetchStatus, 4000);
     return () => clearInterval(interval);
   }, []);
+
+  // Autonomous Simulation Tour: Cycles through realistic threat phases
+  useEffect(() => {
+    if (!autoTour || !isStreaming) return;
+
+    const tourSteps = [
+      { scenario: 'calm', duration: 8, label: 'Phase 1/6: Calm Baseline (FPR 0.0%)' },
+      { scenario: 'exfil_burst', duration: 12, label: 'Phase 2/6: 🚨 Exfil Flood (bytes)' },
+      { scenario: 'calm', duration: 6, label: 'Phase 3/6: 🔄 Latent Decay Recovery' },
+      { scenario: 'c2_beacon', duration: 12, label: 'Phase 4/6: 🚨 C2 Beacon (entropy)' },
+      { scenario: 'calm', duration: 6, label: 'Phase 5/6: 🔄 Latent Decay Recovery' },
+      { scenario: 'dga_tunnel', duration: 12, label: 'Phase 6/6: 🚨 DGA Tunnel (entropy)' },
+    ];
+
+    let currentStepIdx = 0;
+    let stepElapsed = 0;
+
+    const tourInterval = setInterval(() => {
+      const step = tourSteps[currentStepIdx];
+      stepElapsed += 1;
+      const left = Math.max(step.duration - stepElapsed, 0);
+
+      setAutoTourPhase({
+        name: step.label,
+        remaining: left,
+        stepIndex: currentStepIdx + 1,
+        totalSteps: tourSteps.length,
+      });
+
+      if (stepElapsed >= step.duration) {
+        currentStepIdx = (currentStepIdx + 1) % tourSteps.length;
+        stepElapsed = 0;
+        setCurrentScenario(tourSteps[currentStepIdx].scenario);
+      }
+    }, 1000);
+
+    return () => clearInterval(tourInterval);
+  }, [autoTour, isStreaming]);
 
   // Real-time Physics Engine: Drives high-frequency telemetry and NJ-ODE scoring
   useEffect(() => {
@@ -325,6 +374,20 @@ export default function App() {
 
           {/* Live System Indicators */}
           <div className="flex items-center gap-3 font-mono text-xs">
+            {/* Auto-Simulation Tour Button */}
+            <button
+              onClick={() => setAutoTour(a => !a)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-mono font-bold transition-all shadow-md ${
+                autoTour
+                  ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300 shadow-cyan-500/20'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+              }`}
+              title="Toggle Autonomous Simulation Tour"
+            >
+              {autoTour ? <StopCircle className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> : <PlayCircle className="w-3.5 h-3.5 text-emerald-400" />}
+              <span>{autoTour ? `AUTO-TOUR (${autoTourPhase.remaining}s)` : '▶ AUTO-SIMULATE'}</span>
+            </button>
+
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800">
               <span className={`w-2 h-2 rounded-full ${isConfirmedAlert ? 'bg-red-500 animate-ping' : 'bg-emerald-400 animate-pulse'}`} />
               <span className="text-slate-300">
@@ -340,6 +403,27 @@ export default function App() {
 
       {/* Main Screen Body */}
       <main className="max-w-7xl mx-auto px-6 py-6 w-full flex-1 space-y-6">
+        {/* Auto-Simulation Active Notification Banner */}
+        {autoTour && (
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-cyan-950/40 border border-cyan-500/40 text-cyan-300 font-mono text-xs shadow-lg shadow-cyan-950/20">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1 rounded-lg bg-cyan-500/20 border border-cyan-500/50">
+                <Sparkles className="w-4 h-4 text-cyan-400 animate-spin" />
+              </div>
+              <div>
+                <span className="font-bold text-white tracking-wide uppercase">AUTONOMOUS SIMULATION ACTIVE:</span>
+                <span className="ml-2 text-cyan-300">{autoTourPhase.name}</span>
+                <span className="ml-2 text-slate-400">· Next scenario transition in <b className="text-white">{autoTourPhase.remaining}s</b></span>
+              </div>
+            </div>
+            <button
+              onClick={() => setAutoTour(false)}
+              className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-[11px] transition-colors"
+            >
+              Switch to Manual Control
+            </button>
+          </div>
+        )}
         {/* Tab 1: Live Operations View */}
         {activeTab === 'live' && (
           <div className="space-y-6">
