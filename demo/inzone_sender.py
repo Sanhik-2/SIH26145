@@ -11,11 +11,17 @@ Run:
   python demo/inzone_sender.py --attack-at 20 --attack exfil_burst
 """
 import argparse
+from pathlib import Path
 import socket
 import struct
 import sys
 import time
 from typing import List
+
+# Ensure repository root is on sys.path regardless of execution directory
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from features.extractor import Packet
 from simulation.attacks.c2_beacon import c2_beacon_stream

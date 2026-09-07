@@ -15,7 +15,8 @@ import streamlit as st
 
 st.set_page_config(page_title="CHRONOS SOC", page_icon="🛡️", layout="wide")
 
-ALERTS = Path("alerts.jsonl")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+ALERTS = REPO_ROOT / "alerts.jsonl"
 
 
 def norm(a: dict) -> dict:
@@ -106,7 +107,7 @@ with tab1:
 
 # ---------------- campaign tab ----------------
 with tab2:
-    cj = Path("results/campaign.json")
+    cj = REPO_ROOT / "results/campaign.json"
     if cj.exists():
         data = json.loads(cj.read_text())
         attack_type = data.get("attack", "unknown").upper()
@@ -125,7 +126,7 @@ with tab2:
         m3.metric("P3 Persistence", f"{p3.get('persistence_rate', 0)*100:.1f}%", f"TTD: {p3.get('ttd_seconds', 0)}s")
         m4.metric("P4 Post-Recovery FPR", f"{p4.get('post_recovery_fpr', 0)*100:.1f}%", f"Recovery: {p4.get('recovery_seconds', 0)}s")
 
-        img = Path("results/campaign.png")
+        img = REPO_ROOT / "results/campaign.png"
         if img.exists():
             st.image(str(img), caption="Window peak score across continuous campaign phases (300 s timeline)")
 
@@ -136,7 +137,7 @@ with tab2:
 
 # ---------------- static eval tab ----------------
 with tab3:
-    ej = Path("results/eval.json")
+    ej = REPO_ROOT / "results/eval.json"
     if ej.exists():
         data = json.loads(ej.read_text())
         campaigns = data.get("campaigns", {})
