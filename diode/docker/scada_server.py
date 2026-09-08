@@ -88,6 +88,8 @@ stats = {
     "memory_pct": 2.1,
     "net_rx_bytes": 0,
     "net_tx_bytes": 0,
+    "net_rx_kb": 0.0,
+    "net_tx_kb": 0.0,
     "scada_latency_ms": 1.8
 }
 
@@ -95,36 +97,66 @@ out_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 out_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
 def read_cgroup_resources():
-    """Reads genuine container cgroup v2 CPU and Memory metrics."""
+    """Reads genuine container cgroup v2 & v1 CPU, Memory, and Network rates."""
     global stats
     prev_cpu_usec = 0
     prev_time = time.time()
+    prev_rx_bytes = 0
+    prev_tx_bytes = 0
+    prev_net_time = time.time()
 
     while True:
         try:
-            # 1. Container Memory
-            if os.path.exists("/sys/fs/cgroup/memory.current"):
-                with open("/sys/fs/cgroup/memory.current", "r") as f:
-                    mem_bytes = int(f.read().strip())
+            now = time.time()
+
+            # 1. Container Memory (cgroup v2 with fallback to v1)
+            mem_bytes = None
+            for mem_path in [
+                "/sys/fs/cgroup/memory.current",
+                "/sys/fs/cgroup/memory/memory.usage_in_bytes",
+                "/sys/fs/cgroup/memory.usage_in_bytes"
+            ]:
+                if os.path.exists(mem_path):
+                    try:
+                        with open(mem_path, "r") as f:
+                            mem_bytes = int(f.read().strip())
+                        break
+                    except Exception:
+                        pass
+
+            if mem_bytes is not None:
                 mem_mb = round(mem_bytes / (1024 * 1024), 2)
                 stats["memory_mb"] = mem_mb
-                # Limit is 1024 MB
                 stats["memory_pct"] = round((mem_mb / 1024.0) * 100.0, 1)
 
-            # 2. Container CPU (cgroup v2 cpu.stat)
+            # 2. Container CPU (cgroup v2 cpu.stat or cgroup v1 cpuacct.usage)
+            cpu_usec = None
             if os.path.exists("/sys/fs/cgroup/cpu.stat"):
-                with open("/sys/fs/cgroup/cpu.stat", "r") as f:
-                    for line in f:
-                        if line.startswith("usage_usec"):
-                            cpu_usec = int(line.split()[1])
-                            break
-                    else:
-                        cpu_usec = 0
+                try:
+                    with open("/sys/fs/cgroup/cpu.stat", "r") as f:
+                        for line in f:
+                            if line.startswith("usage_usec"):
+                                cpu_usec = int(line.split()[1])
+                                break
+                except Exception:
+                    pass
+            elif os.path.exists("/sys/fs/cgroup/cpuacct/cpuacct.usage"):
+                try:
+                    with open("/sys/fs/cgroup/cpuacct/cpuacct.usage", "r") as f:
+                        cpu_usec = int(int(f.read().strip()) / 1000)
+                except Exception:
+                    pass
+            elif os.path.exists("/sys/fs/cgroup/cpu/cpuacct.usage"):
+                try:
+                    with open("/sys/fs/cgroup/cpu/cpuacct.usage", "r") as f:
+                        cpu_usec = int(int(f.read().strip()) / 1000)
+                except Exception:
+                    pass
 
-                now = time.time()
+            if cpu_usec is not None:
                 dt = now - prev_time
-                if dt >= 0.5 and prev_cpu_usec > 0:
-                    dcpu = cpu_usec - prev_cpu_usec
+                if dt >= 0.25 and prev_cpu_usec > 0:
+                    dcpu = max(0, cpu_usec - prev_cpu_usec)
                     pct = (dcpu / (dt * 1000000.0)) * 100.0
                     stats["cpu_pct"] = round(min(pct, 100.0), 1)
                     prev_cpu_usec = cpu_usec
@@ -146,9 +178,19 @@ def read_cgroup_resources():
                 stats["net_rx_bytes"] = rx_total
                 stats["net_tx_bytes"] = tx_total
 
+                d_net_t = now - prev_net_time
+                if d_net_t >= 0.25 and prev_rx_bytes > 0:
+                    rx_diff = max(0, rx_total - prev_rx_bytes)
+                    tx_diff = max(0, tx_total - prev_tx_bytes)
+                    stats["net_rx_kb"] = round(rx_diff / (d_net_t * 1024.0), 1)
+                    stats["net_tx_kb"] = round(tx_diff / (d_net_t * 1024.0), 1)
+                prev_rx_bytes = rx_total
+                prev_tx_bytes = tx_total
+                prev_net_time = now
+
         except Exception:
             pass
-        time.sleep(1.0)
+        time.sleep(0.25)
 
 def trigger_pump_trip(reason="Unauthorized Modbus FC05 Write"):
     """Transitions reactor to Loss of Flow (NPPAD LOF transient)."""
@@ -317,12 +359,25 @@ def hmi_client_handler(conn, addr):
                 "dataset": DATASET_SOURCE,
                 "reactor_state": reactor_state,
                 "pressure_bar": p_val,
+                "p": p_val,
                 "core_temp_c": tavg_val,
+                "tavg": tavg_val,
                 "coolant_flow_kgs": flow_val,
+                "flow": flow_val,
                 "output_mwe": mw_val,
+                "mw": mw_val,
                 "container_cpu_pct": stats["cpu_pct"],
+                "cpu_pct": stats["cpu_pct"],
+                "cpu": stats["cpu_pct"],
                 "container_mem_mb": stats["memory_mb"],
                 "container_mem_pct": stats["memory_pct"],
+                "ram": stats["memory_pct"],
+                "net_rx_kbps": stats["net_rx_kb"],
+                "net_tx_kbps": stats["net_tx_kb"],
+                "net_kb": stats["net_rx_kb"],
+                "net_rx_bytes": stats["net_rx_bytes"],
+                "net_tx_bytes": stats["net_tx_bytes"],
+                "last_attack": stats["last_attack"],
                 "time": now_str
             })
 
@@ -440,7 +495,11 @@ def telemetry_emitter():
             "host_ram_pct": stats["memory_pct"],
             "ram": stats["memory_pct"],
             "host_ram_mb": stats["memory_mb"],
-            "payload": f"NPPAD [{reactor_state}] [P:{p_bar}bar, Tavg:{tavg_c}C, Flow:{wrca_kgs}kg/s, Power:{mwe}MWe, CPU:{stats['cpu_pct']}%]"
+            "net_rx_kb": stats["net_rx_kb"],
+            "net_tx_kb": stats["net_tx_kb"],
+            "net_kb": stats["net_rx_kb"],
+            "net": stats["net_rx_kb"],
+            "payload": f"NPPAD [{reactor_state}] [P:{p_bar}bar, Tavg:{tavg_c}C, Flow:{wrca_kgs}kg/s, Power:{mwe}MWe, CPU:{stats['cpu_pct']}%, Net:{stats['net_rx_kb']}KB/s]"
         }
 
         send_to_diode(pkt)
