@@ -38,52 +38,60 @@ def print_banner():
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print_banner()
-        print("Usage: python run.py <command> [options]\n")
-        print("Commands:")
-        print("  soc              Launch modern React Full-Stack SOC Console (:8501 HTTP, :8443 WebRTC)")
-        print("  qr               Launch Optical Data Diode QR Transmitter Gateway")
+        print("Commands (4-System Physical Air-Gap Pipeline):")
+        print("  system1          System 1: Launch Laptop Dashboard & NJ-ODE Continuous AI Scanner")
+        print("  system2          System 2: Launch Optical Data Diode QR Generator Gateway")
+        print("  system3 [SYS2_IP] System 3: Launch Useful SCADA Log Sender to System 2")
+        print("  system4 <atk> [SYS2_IP] System 4: Launch Attacking Node (Red-Team Cyber Warfare)")
+        print("  soc              Alias for system1 (React Full-Stack SOC Console)")
+        print("  qr               Alias for system2 (Optical QR Transmitter Gateway)")
+        print("  nuclear-node     Alias for system3 (Kudankulam SCADA Telemetry Node)")
+        print("  redteam <atk>    Alias for system4 (Red-Team Cyber Attacks a-f)")
         print("  scan             Launch Optical QR Scanner Receiver & AI Core")
         print("  scada            Launch Nuclear SCADA Kudankulam Service (Modbus 502, HMI 8080)")
         print("  btop             Launch Real-Time SCADA Terminal Resource Monitor (cgroups HUD)")
-        print("  redteam <attack> Launch Red-Team Cyber Warfare Attacks (NTRO PS #26145 a-f)")
         print("  nuclear-soc      Launch Air-Gapped Nuclear SCADA SOC Defense Console")
+        print("  usb              Launch Physical USB Wire Cable Bridge (Type-A to C / Type-C to C)")
         print("  real-packet      Launch Real Packet Network Automation Engine (Optical QR Mesh)")
-        print("  nuclear-node     Launch Nuclear SCADA Telemetry & OS Process Sentry Node")
         print("  test             Run unit and integration test suite (pytest)")
         print("\nExamples:")
-        print("  python run.py soc                                                # Launch React SOC Dashboard")
-        print("  python run.py qr                                                 # Display Optical QR Diode Stream on screen")
-        print("  python run.py scada                                              # Launch Kudankulam SCADA node (Ports 502, 8080)")
-        print("  python run.py btop                                               # Terminal HUD monitoring CPU/RAM & NPPAD")
-        print("  python run.py redteam ddos                                       # Launch Threat [a] Volumetric Flood")
-        print("  python run.py redteam modbus                                     # Inject Modbus Pump Trip (Trips Coolant Flow)")
-        print("  python run.py scan --phone 10.1.45.X                             # Decode QR using Phone Camera")
+        print("  python run.py system1                                            # System 1: Laptop Dashboard & AI")
+        print("  python run.py system2                                            # System 2: Display Optical QR Diode Stream")
+        print("  python run.py system3 192.168.1.50                               # System 3: Stream SCADA logs to System 2")
+        print("  python run.py system4 ddos 192.168.1.50                          # System 4: Launch DDoS attack targeting System 2")
         print("  python run.py test                                               # Run full pytest suite")
         sys.exit(0)
 
     cmd = sys.argv[1].lower()
     extra_args = sys.argv[2:]
 
-    if cmd in ("soc", "react", "ui"):
-        # Launch the Starlette/Uvicorn fullstack server
+    if cmd in ("system1", "sys1", "soc", "react", "ui"):
+        # System 1: Starlette/Uvicorn fullstack server + continuous NJ-ODE AI
         server_script = REPO_ROOT / "dashboard" / "server.py"
         subprocess.run([sys.executable, str(server_script)] + extra_args)
+
+    elif cmd in ("system2", "sys2", "qr", "gateway", "transmitter"):
+        # System 2: Optical QR generator gateway
+        qr_script = REPO_ROOT / "diode" / "qr_gateway.py"
+        subprocess.run([sys.executable, str(qr_script)] + extra_args)
+
+    elif cmd in ("system3", "sys3", "nuclear-node", "scada-node", "node"):
+        # System 3: In-zone useful SCADA log & telemetry sender
+        node_script = REPO_ROOT / "diode" / "nuclear_node.py"
+        subprocess.run([sys.executable, str(node_script)] + extra_args)
+
+    elif cmd in ("system4", "sys4", "redteam", "attack", "offensive"):
+        # System 4: Attacking node targeting System 2
+        red_script = REPO_ROOT / "diode" / "redteam_arch.py"
+        subprocess.run([sys.executable, str(red_script)] + extra_args)
 
     elif cmd in ("real-packet", "realpacket", "mesh", "automate"):
         mesh_script = REPO_ROOT / "diode" / "real_packet.py"
         subprocess.run([sys.executable, str(mesh_script)] + extra_args)
 
-    elif cmd in ("qr", "gateway", "transmitter"):
-        qr_script = REPO_ROOT / "diode" / "qr_gateway.py"
-        subprocess.run([sys.executable, str(qr_script)] + extra_args)
-
     elif cmd in ("scan", "optical-receiver", "optical"):
         scan_script = REPO_ROOT / "diode" / "scan_receiver.py"
         subprocess.run([sys.executable, str(scan_script)] + extra_args)
-
-    elif cmd in ("nuclear-node", "scada-node", "node"):
-        node_script = REPO_ROOT / "diode" / "nuclear_node.py"
-        subprocess.run([sys.executable, str(node_script)] + extra_args)
 
     elif cmd in ("nuclear-service", "scada", "scada-service"):
         svc_script = REPO_ROOT / "diode" / "nuclear_service.py"
@@ -92,10 +100,6 @@ def main():
     elif cmd in ("btop", "monitor", "hud"):
         btop_script = REPO_ROOT / "diode" / "scada_btop.py"
         subprocess.run([sys.executable, str(btop_script)] + extra_args)
-
-    elif cmd in ("redteam", "attack", "offensive"):
-        red_script = REPO_ROOT / "diode" / "redteam_arch.py"
-        subprocess.run([sys.executable, str(red_script)] + extra_args)
 
     elif cmd in ("nuclear-soc", "soc-gui"):
         soc_script = REPO_ROOT / "diode" / "nuclear_soc.py"
@@ -112,6 +116,10 @@ def main():
     elif cmd in ("dashboard", "streamlit"):
         dash_script = REPO_ROOT / "dashboard" / "app.py"
         subprocess.run(["streamlit", "run", str(dash_script)] + extra_args)
+
+    elif cmd in ("usb", "wire", "cable"):
+        usb_script = REPO_ROOT / "diode" / "usb_bridge.py"
+        subprocess.run([sys.executable, str(usb_script)] + extra_args)
 
     elif cmd in ("test", "tests", "pytest"):
         subprocess.run([sys.executable, "-m", "pytest", "tests/", "-v"] + extra_args)

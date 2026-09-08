@@ -178,3 +178,34 @@ def test_nuclear_scada_telemetry_ingestion_via_packet_event():
     assert vitals["core_temp_c"] == 311.5
     assert vitals["coolant_flow_kgs"] == 16480.0
 
+
+def test_usb_status_endpoint():
+    """Verify /api/usb/status endpoint returns valid physical cable structure."""
+    client = TestClient(app)
+    resp = client.get("/api/usb/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "status" in data
+    assert data["status"] in ("connected", "waiting_for_cable")
+    assert "supported_cables" in data
+    assert any("Type-A" in c for c in data["supported_cables"])
+    assert any("Type-C" in c for c in data["supported_cables"])
+    assert data["wifi_mode"] is False
+    assert "phone_access_url" in data
+    assert "steps" in data
+    assert len(data["steps"]) >= 4
+
+
+def test_usb_bridge_module():
+    """Verify diode.usb_bridge functions directly."""
+    from diode.usb_bridge import get_usb_status, detect_usb_network_interface, check_adb_status
+    status = get_usb_status(preferred_port=8000)
+    assert isinstance(status, dict)
+    assert "transport" in status
+    assert "is_physical_wire" in status
+    assert status["wifi_mode"] is False
+    adb = check_adb_status()
+    assert isinstance(adb, dict)
+    assert "available" in adb
+
+

@@ -31,14 +31,35 @@ import AlertStreamTable from './components/AlertStreamTable';
 import CampaignAnalytics from './components/CampaignAnalytics';
 import ArchitectureTheory from './components/ArchitectureTheory';
 import PhoneCameraScanner from './components/PhoneCameraScanner';
+import CallourDashboardView from './components/CallourDashboardView';
+import UsbCableModal from './components/UsbCableModal';
 
 export default function App() {
-  // 8 Dedicated Tabs: 'topology' (Home) | 'telemetry' | 'detection' | 'attribution' | 'alerts' | 'diode' | 'campaign' | 'theory'
-  const [activeTab, setActiveTab] = useState('topology');
+  // Tabs: 'dashboard' (Executive Home) | 'topology' | 'telemetry' | 'detection' | 'attribution' | 'alerts' | 'diode' | 'campaign' | 'theory'
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [showPhoneScanner, setShowPhoneScanner] = useState(false);
+  const [showUsbModal, setShowUsbModal] = useState(false);
+  const [usbStatus, setUsbStatus] = useState(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [speed, setSpeed] = useState(1.0);
   const [currentScenario, setCurrentScenario] = useState('calm');
+
+  // Poll USB Physical Wire Cable Link status
+  const fetchUsbStatus = async () => {
+    try {
+      const res = await fetch('/api/usb/status');
+      if (res.ok) {
+        const data = await res.json();
+        setUsbStatus(data);
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    fetchUsbStatus();
+    const iv = setInterval(fetchUsbStatus, 3000);
+    return () => clearInterval(iv);
+  }, []);
 
   // Auto-open Phone Camera Scanner if requested via URL query param or route
   useEffect(() => {
@@ -401,6 +422,7 @@ export default function App() {
 
   // Nav Tabs configuration
   const NAV_TABS = [
+    { id: 'dashboard', label: 'Dashboard', icon: BarChart3, badge: null },
     { id: 'topology', label: 'Topology', icon: Layers, badge: null },
     { id: 'telemetry', label: 'Telemetry', icon: Activity, badge: null },
     { id: 'detection', label: 'Detection', icon: Gauge, badge: null },
@@ -526,6 +548,24 @@ export default function App() {
             >
               Manual Mode
             </button>
+          </div>
+        )}
+
+        {/* TAB 0: EXECUTIVE CALLOUR DASHBOARD */}
+        {activeTab === 'dashboard' && (
+          <div className="h-full flex flex-col min-h-0 overflow-y-auto">
+            <CallourDashboardView
+              systemStatus={systemStatus}
+              currentScore={currentScore}
+              currentScenario={currentScenario}
+              onTriggerAttack={handleTriggerAttack}
+              packetEvent={realPacketEvent}
+              recentPackets={recentPackets}
+              alerts={alerts}
+              onOpenScanner={() => setShowPhoneScanner(true)}
+              onOpenUsbModal={() => setShowUsbModal(true)}
+              usbStatus={usbStatus}
+            />
           </div>
         )}
 
@@ -773,6 +813,17 @@ export default function App() {
 
       {showPhoneScanner && (
         <PhoneCameraScanner onClose={() => setShowPhoneScanner(false)} />
+      )}
+
+      {showUsbModal && (
+        <UsbCableModal
+          usbStatus={usbStatus}
+          onClose={() => setShowUsbModal(false)}
+          onOpenScanner={() => {
+            setShowUsbModal(false);
+            setShowPhoneScanner(true);
+          }}
+        />
       )}
     </div>
   );

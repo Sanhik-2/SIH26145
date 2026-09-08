@@ -322,6 +322,7 @@ def main():
         mwe_power = round(qmwt * 0.33, 1)  # Thermal to electrical conversion (~33% efficiency)
 
         pkt = {
+            "src": "system-3",
             "node_id": NODE_ID,
             "facility": "BARC_Kudankulam_1",
             "dataset": "NPPAD_Nature_Sci_Data_2022",

@@ -39,6 +39,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+try:
+    from diode.usb_bridge import get_usb_status
+except ImportError:
+    def get_usb_status(preferred_port: int = 8000) -> Dict[str, Any]:
+        return {
+            "status": "waiting_for_cable",
+            "transport": "UNKNOWN",
+            "is_physical_wire": False,
+            "wifi_mode": False,
+            "supported_cables": ["USB Type-A to Type-C", "USB Type-C to Type-C"],
+            "steps": ["Connect USB cable from phone to laptop"]
+        }
+
 DIST_DIR = REPO_ROOT / "frontend" / "dist"
 frontend_dir = REPO_ROOT / "frontend"
 if (frontend_dir / "package.json").exists() and (not (DIST_DIR / "index.html").exists() or not (frontend_dir / "node_modules").exists()):
@@ -523,6 +536,11 @@ async def api_scada_reset(request: Request) -> JSONResponse:
     return JSONResponse({"status": "RESET_OK", "telemetry": _nuclear_telemetry})
 
 
+async def api_usb_status(request: Request) -> JSONResponse:
+    port = int(request.query_params.get("port", 8000))
+    return JSONResponse(get_usb_status(preferred_port=port))
+
+
 async def poll_scada_background():
     """Periodically queries local SCADA HMI (port 8080) if available."""
     while True:
@@ -581,6 +599,7 @@ routes = [
     Route("/api/packet/event", api_packet_event, methods=["POST"]),
     Route("/api/packets/recent", api_packets_recent, methods=["GET"]),
     Route("/api/diode/status", api_diode_status, methods=["GET"]),
+    Route("/api/usb/status", api_usb_status, methods=["GET"]),
     Route("/api/nuclear/status", api_nuclear_status, methods=["GET"]),
     Route("/api/scada/trip", api_scada_trip, methods=["GET", "POST"]),
     Route("/api/scada/reset", api_scada_reset, methods=["GET", "POST"]),
