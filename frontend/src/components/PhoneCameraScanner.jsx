@@ -355,10 +355,11 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
       const mw = payload.mw ?? payload.output_mwe ?? 955.3;
       const cpu = payload.cpu ?? payload.container_cpu_pct ?? 1.2;
       const ram = payload.ram ?? payload.container_mem_pct ?? 2.8;
+      const net = payload.net ?? payload.net_rx_kbps ?? payload.net_rx_kb ?? 0.0;
       const state = payload.state ?? payload.reactor_state ?? 'NOMINAL_FULL_POWER';
       const atk = payload.atk || payload.attack_type || '';
 
-      const scadaObj = { p, tavg, flow, mw, cpu, ram, state, atk };
+      const scadaObj = { p, tavg, flow, mw, cpu, ram, net, state, atk };
       setScadaVitals(scadaObj);
 
       setDecodedCount(c => c + 1);
@@ -624,7 +625,7 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
                   {scadaVitals.state}
                 </span>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px]">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1 text-[11px]">
                 <div className="p-2 rounded-lg bg-zinc-950 border border-zinc-800">
                   <span className="text-zinc-500 block text-[10px]">Coolant Pressure</span>
                   <span className="text-zinc-200 font-bold">{scadaVitals.p} bar</span>
@@ -634,14 +635,22 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
                   <span className="text-amber-400 font-bold">{scadaVitals.tavg} °C</span>
                 </div>
                 <div className="p-2 rounded-lg bg-zinc-950 border border-zinc-800">
-                  <span className="text-zinc-500 block text-[10px]">Coolant Flow (WRCA)</span>
+                  <span className="text-zinc-500 block text-[10px]">Coolant Flow</span>
                   <span className={`font-bold ${scadaVitals.flow < 10000 ? 'text-rose-400 animate-pulse' : 'text-emerald-400'}`}>
                     {scadaVitals.flow} kg/s
                   </span>
                 </div>
                 <div className="p-2 rounded-lg bg-zinc-950 border border-zinc-800">
-                  <span className="text-zinc-500 block text-[10px]">Grid Power / CPU</span>
-                  <span className="text-sky-400 font-bold">{scadaVitals.mw} MWe ({scadaVitals.cpu}%)</span>
+                  <span className="text-zinc-500 block text-[10px]">CPU / RAM Load</span>
+                  <span className={`font-bold ${scadaVitals.cpu >= 50 ? 'text-rose-400 animate-pulse' : 'text-sky-400'}`}>
+                    {scadaVitals.cpu}% · {scadaVitals.ram}%
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-zinc-950 border border-zinc-800 col-span-2 sm:col-span-1">
+                  <span className="text-zinc-500 block text-[10px]">Net Throughput</span>
+                  <span className={`font-bold ${scadaVitals.net >= 150 ? 'text-rose-400 animate-pulse' : 'text-emerald-400'}`}>
+                    {scadaVitals.net || 0} KB/s
+                  </span>
                 </div>
               </div>
             </div>
