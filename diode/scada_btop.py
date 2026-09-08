@@ -31,6 +31,11 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+    print("CHRONOS: NUCLEAR SCADA TERMINAL RESOURCE MONITOR (BTOP / HTOP STYLE HUD)")
+    print("Usage: python diode/scada_btop.py [TARGET_IP]")
+    sys.exit(0)
+
 TARGET_IP = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1"
 HMI_URL = f"http://{TARGET_IP}:8080"
 STATS_URL = f"http://{TARGET_IP}:8080/stats"

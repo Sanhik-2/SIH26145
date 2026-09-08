@@ -1,47 +1,47 @@
 {
   "threshold": 2.4641265869140625,
   "benign_fpr": 0.0,
-  "benign_peak_mean": 1.004783272743225,
-  "benign_peak_p99": 2.2929368019104004,
+  "benign_peak_mean": 0.9142209887504578,
+  "benign_peak_p99": 2.1141445636749268,
   "c2_beacon": {
     "detection_rate": 1.0,
-    "flagged_obs_rate": 0.5401174168297456,
-    "mean_peak_score": 24.79181468486786,
+    "flagged_obs_rate": 0.5264187866927593,
+    "mean_peak_score": 25.070580434799194,
     "attribution_accuracy": 0.9,
     "expected_attribution": "c2_beacon/beacon/recon/tunnel/encrypted-c2"
   },
   "exfil_burst": {
     "detection_rate": 1.0,
     "flagged_obs_rate": 1.0,
-    "mean_peak_score": 895.3178024291992,
+    "mean_peak_score": 888.6897338867187,
     "attribution_accuracy": 1.0,
     "expected_attribution": "exfil_burst/exfil-flood"
   },
   "dga_tunnel": {
     "detection_rate": 1.0,
     "flagged_obs_rate": 1.0,
-    "mean_peak_score": 75.02299628257751,
+    "mean_peak_score": 75.06886758804322,
     "attribution_accuracy": 0.95,
     "expected_attribution": "dga_tunnel/tunnel/encrypted-c2"
   },
   "ddos_flood": {
     "detection_rate": 1.0,
-    "flagged_obs_rate": 0.9982363315696648,
-    "mean_peak_score": 785.7927017211914,
+    "flagged_obs_rate": 0.99848828420257,
+    "mean_peak_score": 778.5593292236329,
     "attribution_accuracy": 1.0,
     "expected_attribution": "ddos_flood/volumetric-ddos/exfil-flood"
   },
   "tls_c2": {
     "detection_rate": 1.0,
     "flagged_obs_rate": 0.5286343612334802,
-    "mean_peak_score": 140.70414276123046,
+    "mean_peak_score": 141.3086233139038,
     "attribution_accuracy": 1.0,
     "expected_attribution": "tls_c2/c2_beacon/beacon/recon"
   },
   "portscan": {
     "detection_rate": 1.0,
     "flagged_obs_rate": 0.9954694185753838,
-    "mean_peak_score": 140.75662689208986,
+    "mean_peak_score": 140.59048156738282,
     "attribution_accuracy": 1.0,
     "expected_attribution": "portscan/beacon/recon/exfil-flood"
   }

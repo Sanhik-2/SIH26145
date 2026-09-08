@@ -48,6 +48,11 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+    print("CHRONOS: NUCLEAR SCADA NODE (REAL-WORLD NPPAD BENCHMARK DATASET)")
+    print("Usage: python diode/nuclear_node.py [TARGET_IP]")
+    sys.exit(0)
+
 TARGET_IP = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1"
 TARGET_PORT = 9999
 

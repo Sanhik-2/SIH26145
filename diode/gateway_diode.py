@@ -10,12 +10,20 @@ CHRONOS GATEWAY DIODE (Runs on Laptop 5)
 import socket
 import json
 import time
+import sys
 import hashlib
 import threading
 import math
 import numpy as np
 import cv2
 import qrcode
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 # Local Gateway Configuration
 GATEWAY_IP = "0.0.0.0"       # Listen on all interfaces

@@ -15,9 +15,17 @@ Objective (paper eq. 33, verbatim):
     Φ(θ) = (1/N) Σ_paths (1/n_j) Σ_i ( ||x_i − y_i||₂ + ||y_i − y_i⁻||₂ )²
 """
 import math
+import sys
 from typing import Dict, Tuple
 import numpy as np
 import torch
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 import torch.nn as nn
 
 MODEL_VERSION = "1.1"
@@ -155,7 +163,7 @@ class NJODE(nn.Module):
                 opt.step()
                 tot += loss.item()
             if ep == 1 or ep % log_every == 0:
-                print(f"    epoch {ep:3d}/{epochs}  Φ = {tot / len(loader):.5f}")
+                print(f"    epoch {ep:3d}/{epochs}  loss = {tot / len(loader):.5f}")
         return self
 
     @torch.no_grad()

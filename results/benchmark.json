@@ -1,13 +1,13 @@
 {
-  "timestamp": "2026-09-07 22:39:15",
+  "timestamp": "2026-09-08 10:14:34",
   "model_version": "1.1",
   "feature_count": 5,
   "device": "cpu",
-  "max_sustained_rate_pkts_per_sec": 48830.0,
+  "max_sustained_rate_pkts_per_sec": 46206.6,
   "scoring_latency_ms": {
-    "p50": 60.848,
-    "p90": 81.723,
-    "p99": 91.694
+    "p50": 81.764,
+    "p90": 99.537,
+    "p99": 101.025
   },
   "target_rates_tested": [
     100,
@@ -20,51 +20,51 @@
   "ramp_benchmarks": [
     {
       "target_rate_pkts_per_sec": 100,
-      "measured_ingest_rate_pkts_per_sec": 6835.6,
+      "measured_ingest_rate_pkts_per_sec": 5980.6,
       "packets_processed": 400,
       "windows_scored": 1,
-      "scoring_latency_p50_ms": 52.283,
-      "scoring_latency_p99_ms": 52.283
+      "scoring_latency_p50_ms": 61.238,
+      "scoring_latency_p99_ms": 61.238
     },
     {
       "target_rate_pkts_per_sec": 500,
-      "measured_ingest_rate_pkts_per_sec": 23866.3,
+      "measured_ingest_rate_pkts_per_sec": 21647.8,
       "packets_processed": 2000,
       "windows_scored": 1,
-      "scoring_latency_p50_ms": 54.824,
-      "scoring_latency_p99_ms": 54.824
+      "scoring_latency_p50_ms": 64.968,
+      "scoring_latency_p99_ms": 64.968
     },
     {
       "target_rate_pkts_per_sec": 1000,
-      "measured_ingest_rate_pkts_per_sec": 33909.8,
+      "measured_ingest_rate_pkts_per_sec": 32183.1,
       "packets_processed": 4000,
       "windows_scored": 1,
-      "scoring_latency_p50_ms": 58.895,
-      "scoring_latency_p99_ms": 58.895
+      "scoring_latency_p50_ms": 66.246,
+      "scoring_latency_p99_ms": 66.246
     },
     {
       "target_rate_pkts_per_sec": 2000,
-      "measured_ingest_rate_pkts_per_sec": 44712.8,
+      "measured_ingest_rate_pkts_per_sec": 38625.1,
       "packets_processed": 8000,
       "windows_scored": 1,
-      "scoring_latency_p50_ms": 62.8,
-      "scoring_latency_p99_ms": 62.8
+      "scoring_latency_p50_ms": 97.884,
+      "scoring_latency_p99_ms": 97.884
     },
     {
       "target_rate_pkts_per_sec": 3000,
-      "measured_ingest_rate_pkts_per_sec": 48830.0,
+      "measured_ingest_rate_pkts_per_sec": 40408.9,
       "packets_processed": 12000,
       "windows_scored": 1,
-      "scoring_latency_p50_ms": 70.643,
-      "scoring_latency_p99_ms": 70.643
+      "scoring_latency_p50_ms": 101.191,
+      "scoring_latency_p99_ms": 101.191
     },
     {
       "target_rate_pkts_per_sec": 5000,
-      "measured_ingest_rate_pkts_per_sec": 47027.2,
+      "measured_ingest_rate_pkts_per_sec": 46206.6,
       "packets_processed": 20000,
       "windows_scored": 1,
-      "scoring_latency_p50_ms": 92.802,
-      "scoring_latency_p99_ms": 92.802
+      "scoring_latency_p50_ms": 97.283,
+      "scoring_latency_p99_ms": 97.283
     }
   ]
 }

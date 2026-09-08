@@ -19,6 +19,14 @@ from pathlib import Path
 import socket
 import sys
 import time
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import cv2
 import numpy as np
 import torch

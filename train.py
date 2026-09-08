@@ -2,7 +2,16 @@
 featurize → window → train → calibrate → checkpoint.
 Proves the unified multi-regime pipeline with zero manual steps.
 """
+import argparse
+import sys
 import torch
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 from features.extractor import featurize
 from features.windowing import Windower
@@ -12,6 +21,12 @@ from simulation.benign.web_sync import web_sync_stream
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Train CHRONOS NJ-ODE model on multiregime benign baseline.")
+    parser.add_argument("--epochs", type=int, default=60, help="Training epochs (default: 60)")
+    parser.add_argument("--output", default="checkpoints/njode_telemetry.pt", help="Checkpoint output path")
+    parser.add_argument("--device", default="cpu", help="Compute device (cpu or cuda)")
+    args = parser.parse_args()
+
     torch.manual_seed(0)
     print("[1/5] generating multi-regime benign streams (telemetry + web_sync, 600 s)...")
     s_tel = featurize(telemetry_stream(duration_s=600.0, seed=0))
@@ -40,14 +55,17 @@ def main():
         torch.utils.data.TensorDataset(v_train, m_train, t_train),
         batch_size=32, shuffle=True)
 
-    print("[3/5] training NJ-ODE on multiregime benign baseline...")
-    model.fit(loader, epochs=60, log_every=10)
+    if args.device != "cpu" and torch.cuda.is_available():
+        model = model.to(args.device)
+
+    print(f"[3/5] training NJ-ODE on multiregime benign baseline ({args.epochs} epochs)...")
+    model.fit(loader, epochs=args.epochs, log_every=10)
 
     print("[4/5] calibrating τ on held-out benign windows...")
     model.calibrate([(v_cal, m_cal, t_cal)])
 
-    model.save("checkpoints/njode_telemetry.pt")
-    print("[5/5] versioned checkpoint saved → checkpoints/njode_telemetry.pt ✓")
+    model.save(args.output)
+    print(f"[5/5] versioned checkpoint saved → {args.output} ✓")
 
 
 if __name__ == "__main__":

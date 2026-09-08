@@ -397,6 +397,11 @@ class NuclearSOCReceiver:
         return canvas
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+        print("CHRONOS: AIR-GAPPED NUCLEAR SCADA SOC & AI DEFENSE CONSOLE")
+        print("Usage: python diode/nuclear_soc.py [--camera ID] [--headless]")
+        sys.exit(0)
+
     soc = NuclearSOCReceiver()
     cam_id = 0
     if len(sys.argv) > 1 and sys.argv[1].isdigit():

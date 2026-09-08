@@ -10,8 +10,17 @@ HONEST CAVEAT (keep this in your back pocket for Q&A): these attacks are the
 is EXPECTED here. This run validates plumbing + gives a regression harness.
 Generalization claims come from CIC-IDS2017 PCAP validation later.
 """
+import argparse
 import json
+import sys
 from pathlib import Path
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 import numpy as np
 import torch
@@ -67,6 +76,13 @@ def mixed_window_stream(win, benign_seed, attack_fn, attack_seed):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="CHRONOS Multi-Regime Evaluation Harness")
+    parser.add_argument("--checkpoint", default="checkpoints/njode_telemetry.pt", help="Path to versioned NJ-ODE checkpoint")
+    parser.add_argument("--output", default="results/eval.json", help="Path to save evaluation JSON")
+    parser.add_argument("--device", default="cpu", help="Compute device ('cpu' or 'cuda')")
+    parser.add_argument("--retrain", action="store_true", help="Force retraining baseline model")
+    args = parser.parse_args()
+
     torch.manual_seed(0)
 
     print("[1/5] multi-regime benign corpus (telemetry + web_sync)...")
@@ -79,16 +95,25 @@ def main():
     fpr_tel = trim(featurize(telemetry_stream(duration_s=N_FPR * WINDOW_S, seed=13)), N_FPR * WINDOW_S)
     fpr_sync = trim(featurize(web_sync_stream(duration_s=N_FPR * WINDOW_S, seed=14)), N_FPR * WINDOW_S)
 
-    model = NJODE(d_x=5, d_h=10)
-    win = Windower(model, window_s=WINDOW_S)
-    win.fit_standardizer(train_tel, train_sync)
-
-    print("[2/5] training + calibration on multiregime baseline...")
-    v, m, t = tensorset(win, train_tel, train_sync)
-    loader = torch.utils.data.DataLoader(
-        torch.utils.data.TensorDataset(v, m, t), batch_size=32, shuffle=True)
-    model.fit(loader, epochs=60, log_every=20)
-    model.calibrate([tensorset(win, cal_tel, cal_sync)])
+    ckpt_path = Path(args.checkpoint)
+    if ckpt_path.exists() and not args.retrain:
+        print(f"[2/5] loading pre-calibrated baseline checkpoint from {ckpt_path}...")
+        model = NJODE.load(str(ckpt_path), device=args.device)
+        win = Windower(model, window_s=WINDOW_S)
+        win.fit_standardizer(train_tel, train_sync)
+    else:
+        print("[2/5] training + calibration on multiregime baseline...")
+        model = NJODE(d_x=5, d_h=10).to(args.device)
+        win = Windower(model, window_s=WINDOW_S)
+        win.fit_standardizer(train_tel, train_sync)
+        v, m, t = tensorset(win, train_tel, train_sync)
+        loader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(v, m, t), batch_size=32, shuffle=True)
+        model.fit(loader, epochs=60, log_every=20, device=args.device)
+        model.calibrate([tensorset(win, cal_tel, cal_sync)], device=args.device)
+        if not ckpt_path.parent.exists():
+            ckpt_path.parent.mkdir(parents=True, exist_ok=True)
+        model.save(str(ckpt_path))
 
     print("[3/5] benign test windows (FPR)...")
     v_f, m_f, t_f = tensorset(win, fpr_tel, fpr_sync)
@@ -160,13 +185,14 @@ def main():
               f"{r['attribution_accuracy']*100:>15.0f}%{r['expected_attribution']:>14}")
     print("-" * 78)
 
-    Path("results").mkdir(exist_ok=True)
-    with open("results/eval.json", "w") as fh:
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as fh:
         json.dump({"threshold": model.threshold.item(), "benign_fpr": fpr,
                    "benign_peak_mean": mean_benign,
                    "benign_peak_p99": p99_benign,
                    **rows}, fh, indent=2)
-    print("saved → results/eval.json")
+    print(f"saved -> {out_path}")
 
 
 if __name__ == "__main__":
