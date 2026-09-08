@@ -88,14 +88,23 @@ class DashboardNotifier:
         self.running = False
 
 def poll_scada_container():
-    """Polls the containerized SCADA node for live NPPAD telemetry."""
-    try:
-        req = urllib.request.Request(SCADA_HMI_URL, headers={"User-Agent": "ChronosDiodeGateway/1.0"})
-        with urllib.request.urlopen(req, timeout=0.8) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data
-    except Exception:
-        return None
+    """Polls the containerized SCADA node for live NPPAD telemetry across candidate endpoints."""
+    candidate_urls = [
+        SCADA_HMI_URL,
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://host.docker.internal:8080",
+    ]
+    for url in candidate_urls:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "ChronosDiodeGateway/1.0"})
+            with urllib.request.urlopen(req, timeout=0.6) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                if "pressure_bar" in data or "p" in data or "reactor_state" in data or "core_temp_c" in data:
+                    return data
+        except Exception:
+            continue
+    return None
 
 def packet_listener():
     """Listens for UDP packets from Nuclear SCADA and queues for optical encoding."""
@@ -143,7 +152,7 @@ def packet_listener():
                 state = payload.get("reactor_state", "LOSS_OF_FLOW")
                 last_event = f"PHYSICAL ANOMALY: {state}"
                 last_event_time = now
-                print(f"[!] [PHYSICAL SCADA ALARM] {state}! Pressure: {payload.get('p_bar')} bar")
+                print(f"[!] [PHYSICAL SCADA ALARM] {state}! Pressure: {payload.get('p', payload.get('p_bar'))} bar")
 
             with buffer_lock:
                 log_buffer.append(payload)
@@ -151,11 +160,12 @@ def packet_listener():
         except Exception:
             pass
 
-def generate_qr_matrix(data_str, size=(440, 440)):
-    """Generates a high-contrast QR image."""
+def generate_qr_matrix(data_str, size=(500, 500)):
+    """Generates an optimized, large, high-contrast QR image for phone cameras."""
     qr = qrcode.QRCode(
+        version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=8,
+        box_size=12,
         border=4,
     )
     qr.add_data(data_str)
@@ -189,6 +199,18 @@ def main():
 
 def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
     global sequence_id, total_received, total_bytes, is_alert_active
+
+    # Load authentic NPPAD benchmark for dynamic standalone progression
+    nppad_fallback_records = []
+    normal_csv_path = REPO_ROOT / "data" / "nuclear" / "nppad_normal.csv"
+    if normal_csv_path.exists():
+        try:
+            import csv
+            with open(normal_csv_path, "r", encoding="utf-8") as f:
+                nppad_fallback_records = list(csv.DictReader(f))
+        except Exception:
+            pass
+
     while True:
         start_time = time.time()
 
@@ -197,50 +219,69 @@ def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
             log_buffer.clear()
 
         if not batch:
-            # Poll container directly for live NPPAD data
+            # Poll container directly for live NPPAD data from Docker
             node_data = poll_scada_container()
             if node_data:
                 now_str = time.strftime("%H:%M:%S")
                 state = node_data.get("reactor_state", "NOMINAL_FULL_POWER")
-                evt = "ROUTINE_SCADA" if state == "NOMINAL_FULL_POWER" else "SCADA_PHYSICAL_ANOMALY"
+                evt = "ROUTINE_SCADA" if state in ("NOMINAL", "NOMINAL_FULL_POWER") else "SCADA_PHYSICAL_ANOMALY"
                 latest = {
                     "node_id": 1,
                     "facility": "BARC_Kudankulam_1",
+                    "src": "nuclear-scada",
                     "dataset": "NPPAD_Nature_Sci_Data_2022",
                     "reactor_state": state,
+                    "state": state,
                     "event_type": evt,
                     "seq": sequence_id,
                     "time": now_str,
                     "ts": now_str,
-                    "p_bar": node_data.get("pressure_bar", 155.5),
-                    "tavg_c": node_data.get("core_temp_c", 310.0),
-                    "tha_c": node_data.get("core_temp_c", 310.0) + 17.8,
-                    "tca_c": node_data.get("core_temp_c", 310.0) - 17.8,
-                    "wrca_kgs": node_data.get("coolant_flow_kgs", 16515.8),
-                    "psga_bar": 67.0,
-                    "mwe_electric": node_data.get("output_mwe", 955.3),
-                    "host_cpu_pct": node_data.get("container_cpu_pct", 1.2),
-                    "host_ram_pct": node_data.get("container_mem_pct", 2.8),
-                    "host_ram_mb": node_data.get("container_mem_mb", 28.5),
-                    "payload": f"NPPAD [{state}] P:{node_data.get('pressure_bar', 155.5):.1f}bar Flow:{node_data.get('coolant_flow_kgs', 16515.8):.0f}kg/s"
+                    "p": round(float(node_data.get("pressure_bar", node_data.get("p", 155.5))), 1),
+                    "tavg": round(float(node_data.get("core_temp_c", node_data.get("tavg", 310.0))), 1),
+                    "flow": round(float(node_data.get("coolant_flow_kgs", node_data.get("flow", 16515.8))), 1),
+                    "mw": round(float(node_data.get("output_mwe", node_data.get("mw", 955.3))), 1),
+                    "cpu": round(float(node_data.get("container_cpu_pct", node_data.get("cpu", 1.2))), 1),
+                    "ram": round(float(node_data.get("container_mem_pct", node_data.get("ram", 2.8))), 1),
+                }
+            elif nppad_fallback_records:
+                rec = nppad_fallback_records[sequence_id % len(nppad_fallback_records)]
+                now_str = time.strftime("%H:%M:%S")
+                p_val = round(float(rec.get("P", 155.5)), 1)
+                tavg_val = round(float(rec.get("TAVG", 310.0)), 1)
+                flow_val = round(float(rec.get("WRCA", 16515.8)), 1)
+                mw_val = round(float(rec.get("QMWT", 2895.0)) * 0.33, 1)
+                latest = {
+                    "node_id": 1,
+                    "facility": "BARC_Kudankulam_1",
+                    "src": "nuclear-scada",
+                    "event_type": "ROUTINE_SCADA",
+                    "reactor_state": "NOMINAL_FULL_POWER",
+                    "state": "NOMINAL_FULL_POWER",
+                    "p": p_val,
+                    "tavg": tavg_val,
+                    "flow": flow_val,
+                    "mw": mw_val,
+                    "cpu": 1.2,
+                    "ram": 2.8,
+                    "seq": sequence_id,
+                    "time": now_str,
                 }
             else:
                 latest = {
                     "node_id": 1,
                     "facility": "BARC_Kudankulam_1",
+                    "src": "nuclear-scada",
                     "event_type": "ROUTINE_SCADA",
-                    "p_bar": 155.5,
-                    "tavg_c": 310.0,
-                    "tha_c": 327.8,
-                    "tca_c": 292.2,
-                    "wrca_kgs": 16515.8,
-                    "psga_bar": 67.0,
-                    "mwe_electric": 955.3,
-                    "host_cpu_pct": 1.2,
-                    "host_ram_pct": 2.8,
-                    "payload": "NPPAD Kudankulam Nominal Baseline",
+                    "reactor_state": "NOMINAL_FULL_POWER",
+                    "state": "NOMINAL_FULL_POWER",
+                    "p": 155.5,
+                    "tavg": 310.0,
+                    "flow": 16515.8,
+                    "mw": 955.3,
+                    "cpu": 1.2,
+                    "ram": 2.8,
                     "seq": sequence_id,
-                    "time": time.strftime("%H:%M:%S")
+                    "time": time.strftime("%H:%M:%S"),
                 }
         else:
             latest = batch[-1]
@@ -248,7 +289,7 @@ def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
         # Determine 5-channel feature vector [iat, bytes, entropy, burst, direction] for NJ-ODE AI
         atk_type = str(latest.get("attack_type", latest.get("atk", ""))).upper()
         threat_cls = str(latest.get("threat_class", latest.get("cls", ""))).lower()
-        is_threat = bool(atk_type) or (threat_cls in ["a", "b", "c", "d", "e", "f"]) or (latest.get("reactor_state") not in ["NOMINAL_FULL_POWER", None])
+        is_threat = bool(atk_type) or (threat_cls in ["a", "b", "c", "d", "e", "f"]) or (latest.get("reactor_state") not in ["NOMINAL_FULL_POWER", "NOMINAL", None])
 
         feat = latest.get("feat")
         if not feat:
@@ -271,34 +312,46 @@ def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
             else:
                 feat = [1.05, 128, 3.45, 1.0, 0]
 
-        src_node = latest.get("src", "ews-alpha" if is_threat else "nuclear-scada")
+        src_node = latest.get("src", "redteam-attacker" if is_threat else "nuclear-scada")
         pkt_size = int(latest.get("bytes", latest.get("size", feat[1])))
 
-        # Compact optical payload
+        # Extract EXACT Kudankulam SCADA Vitals (Matching Docker Terminal output)
+        p_val = round(float(latest.get("p", latest.get("p_bar", latest.get("pressure_bar", 155.5)))), 1)
+        tavg_val = round(float(latest.get("tavg", latest.get("tavg_c", latest.get("core_temp_c", 310.0)))), 1)
+        flow_val = round(float(latest.get("flow", latest.get("wrca_kgs", latest.get("coolant_flow_kgs", 16515.8)))), 1)
+        mw_val = round(float(latest.get("mw", latest.get("mwe_electric", latest.get("output_mwe", 955.3)))), 1)
+        cpu_val = round(float(latest.get("cpu", latest.get("host_cpu_pct", latest.get("container_cpu_pct", 1.2)))), 1)
+        ram_val = round(float(latest.get("ram", latest.get("host_ram_pct", latest.get("container_mem_pct", 2.8)))), 1)
+        state_val = str(latest.get("state", latest.get("reactor_state", "NOMINAL_FULL_POWER")))
+
+        # Highly Optimized, High-Speed Optical QR Payload (~140 bytes, Version 4/5 QR Code)
+        # This produces large, bold, easily-scannable QR blocks for phone cameras over cable
         optical_payload = {
             "seq": sequence_id,
-            "ts": latest.get("time", latest.get("ts", time.strftime("%H:%M:%S"))),
-            "type": latest.get("event_type", "ROUTINE_SCADA"),
-            "state": latest.get("reactor_state", "NOMINAL_FULL_POWER"),
             "src": src_node,
-            "size": pkt_size,
-            "feat": feat,
-            "p": round(float(latest.get("p_bar", latest.get("pressure_bar", 155.5))), 1),
-            "tavg": round(float(latest.get("tavg_c", latest.get("temp_c", 310.0))), 1),
-            "tha": round(float(latest.get("tha_c", 327.8)), 1),
-            "tca": round(float(latest.get("tca_c", 292.2)), 1),
-            "flow": round(float(latest.get("wrca_kgs", latest.get("coolant_flow_kgs", 16515.8))), 0),
-            "psg": round(float(latest.get("psga_bar", 67.0)), 1),
-            "mw": round(float(latest.get("mwe_electric", latest.get("output_mwe", 955.0))), 1),
-            "cpu": round(float(latest.get("host_cpu_pct", latest.get("container_cpu_pct", 1.2))), 1),
-            "ram": round(float(latest.get("host_ram_pct", latest.get("container_mem_pct", 2.8))), 1),
-            "cls": threat_cls,
+            "state": state_val,
+            "p": p_val,
+            "tavg": tavg_val,
+            "flow": flow_val,
+            "mw": mw_val,
+            "cpu": cpu_val,
+            "ram": ram_val,
             "atk": atk_type if is_threat else "",
-            "msg": latest.get("payload", "")[:45]
+            "feat": feat,
         }
 
         # Dispatch real packet movements to React SOC Dashboard
         if notifier:
+            scada_map = {
+                "p": p_val,
+                "tavg": tavg_val,
+                "flow": flow_val,
+                "mw": mw_val,
+                "cpu": cpu_val,
+                "ram": ram_val,
+                "state": state_val,
+                "atk": optical_payload["atk"]
+            }
             notifier.send_event({
                 "type": "packet_transit",
                 "from": src_node,
@@ -306,9 +359,12 @@ def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
                 "size": pkt_size,
                 "feat": feat,
                 "threat": is_threat,
-                "p": optical_payload["p"],
-                "flow": optical_payload["flow"],
-                "state": optical_payload["state"],
+                "scada": scada_map,
+                "p": p_val,
+                "tavg": tavg_val,
+                "flow": flow_val,
+                "mw": mw_val,
+                "state": state_val,
                 "timestamp": time.time(),
             })
             notifier.send_event({
@@ -319,6 +375,7 @@ def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
                 "size": pkt_size,
                 "feat": feat,
                 "threat": is_threat,
+                "scada": scada_map,
                 "timestamp": time.time(),
             })
             notifier.send_event({
@@ -329,6 +386,7 @@ def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
                 "size": pkt_size,
                 "feat": feat,
                 "threat": is_threat,
+                "scada": scada_map,
                 "timestamp": time.time(),
             })
             notifier.send_event({
@@ -338,9 +396,12 @@ def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
                 "size": pkt_size,
                 "feat": feat,
                 "threat": is_threat,
-                "p": optical_payload["p"],
-                "flow": optical_payload["flow"],
-                "state": optical_payload["state"],
+                "scada": scada_map,
+                "p": p_val,
+                "tavg": tavg_val,
+                "flow": flow_val,
+                "mw": mw_val,
+                "state": state_val,
                 "timestamp": time.time(),
             })
             if is_threat:
@@ -352,6 +413,7 @@ def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
                     "feat": feat,
                     "threat": True,
                     "is_alert": True,
+                    "scada": scada_map,
                     "timestamp": time.time(),
                 })
 
@@ -361,12 +423,13 @@ def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
         except Exception:
             pass
 
-        qr_text = json.dumps(optical_payload)
-        qr_img = generate_qr_matrix(qr_text)
+        # Generate minimal, high-density, high-contrast QR Matrix
+        qr_text = json.dumps(optical_payload, separators=(',', ':'))
+        qr_img = generate_qr_matrix(qr_text, size=(500, 500))
 
         if not headless:
-            # High-impact transmitter GUI canvas
-            h, w = 680, 680
+            # High-impact transmitter GUI canvas (720x720)
+            h, w = 720, 720
             canvas = np.zeros((h, w, 3), dtype=np.uint8)
 
             # Top Header Banner
@@ -374,28 +437,25 @@ def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
             cv2.putText(canvas, "NUCLEAR SCADA OPTICAL DATA DIODE", (30, 36), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.72, (0, 240, 255), 2)
 
-            # Draw QR frame
-            canvas[70:510, 120:560] = qr_img
+            # Draw Enormous High-Contrast QR frame centered with clean white margins
+            canvas[65:565, 110:610] = qr_img
 
             # Bottom Telemetry Strip
-            cv2.rectangle(canvas, (0, 520), (w, h), (18, 18, 28), -1)
-            cv2.line(canvas, (0, 520), (w, 520), (50, 50, 70), 1)
+            cv2.rectangle(canvas, (0, 575), (w, h), (18, 18, 28), -1)
+            cv2.line(canvas, (0, 575), (w, 575), (50, 50, 70), 1)
 
-            cv2.putText(canvas, f"Frame #{sequence_id} | Ingest: {total_received} packets | Size: {len(qr_text)}B", 
-                        (25, 545), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+            cv2.putText(canvas, f"Frame #{sequence_id:04d} | Ingest: {total_received} pkts | Payload: {len(qr_text)}B (Opt v4/5)", 
+                        (25, 600), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
             
-            status_color = (0, 0, 255) if optical_payload.get("atk") or optical_payload.get("state") != "NOMINAL_FULL_POWER" else (0, 255, 120)
-            cv2.putText(canvas, f"State: {optical_payload.get('state')} | CPU: {optical_payload.get('cpu')}% | RAM: {optical_payload.get('ram')}%", 
-                        (25, 575), cv2.FONT_HERSHEY_SIMPLEX, 0.48, status_color, 1)
+            status_color = (0, 0, 255) if optical_payload.get("atk") or optical_payload.get("state") not in ("NOMINAL", "NOMINAL_FULL_POWER") else (0, 255, 120)
+            cv2.putText(canvas, f"State: {optical_payload.get('state')} | CPU: {cpu_val:.1f}% | RAM: {ram_val:.1f}%", 
+                        (25, 630), cv2.FONT_HERSHEY_SIMPLEX, 0.48, status_color, 1)
 
-            cv2.putText(canvas, f"NPPAD Vitals: P={optical_payload.get('p')}bar | Tavg={optical_payload.get('tavg')}C | Flow={optical_payload.get('flow')}kg/s | MW={optical_payload.get('mw')}MWe", 
-                        (25, 605), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 240, 255), 1)
+            cv2.putText(canvas, f"NPPAD Vitals: P={p_val:.1f}bar | Tavg={tavg_val:.1f}C | Flow={flow_val:.1f}kg/s | MW={mw_val:.1f}MWe", 
+                        (25, 660), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 240, 255), 1)
 
             cv2.putText(canvas, "Air-Gap: UNIDIRECTIONAL OPTICAL PHOTONS ONLY (ZERO COPPER RETURN)", 
-                        (25, 638), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 255, 0), 1)
-
-            cv2.putText(canvas, "Scan with Webcam / Phone on SOC or press SPACE on SOC for Loopback", 
-                        (25, 665), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (140, 140, 140), 1)
+                        (25, 692), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 255, 0), 1)
 
             cv2.imshow("CHRONOS Nuclear Optical Diode (Transmitter)", canvas)
             key = cv2.waitKey(1) & 0xFF
@@ -403,12 +463,8 @@ def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
                 break
 
         # Terminal live telemetry output (Exact Docker plant telemetry)
-        p_val = optical_payload.get('p', 155.5)
-        t_val = optical_payload.get('tavg', 310.0)
-        flow_val = optical_payload.get('flow', 16500.0)
-        mw_val = optical_payload.get('mw', 955.0)
-        state_val = optical_payload.get('state', 'NOMINAL_FULL_POWER')
-        print(f"[SCADA DIODE TX] Frame #{sequence_id:04d} | Kudankulam Unit 1 PWR | Pressure: {p_val:.1f} bar | Core Temp: {t_val:.1f} °C | Flow: {flow_val:.1f} kg/s | Output: {mw_val:.1f} MWe | State: {state_val}")
+        status_tag = "[NOMINAL]" if state_val in ("NOMINAL", "NOMINAL_FULL_POWER") else f"[{state_val}]"
+        print(f"[{time.strftime('%H:%M:%S')}] {status_tag} Pressure: {p_val:5.1f} bar | Temp: {tavg_val:5.1f} C | Flow: {flow_val:7.1f} kg/s | Power: {mw_val:5.1f} MWe | State: {state_val}")
 
         sequence_id += 1
         elapsed = time.time() - start_time

@@ -12,6 +12,8 @@ services:
     environment:
       - DIODE_HOST=host.docker.internal
       - DIODE_PORT=9999
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     deploy:
       resources:
         limits:

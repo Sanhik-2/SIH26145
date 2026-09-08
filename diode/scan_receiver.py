@@ -284,7 +284,10 @@ def main():
                 print(f"[!] No camera available. Falling back to LOOPBACK mode.")
                 current_mode = "LOOPBACK"
             else:
-                print(f"[✓] Successfully connected to Optical Camera Stream: #{active_cam_idx}")
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                print(f"[✓] Successfully connected to Optical Camera Stream: #{active_cam_idx} (1280x720, Buffer=1)")
         except Exception as e:
             print(f"[!] Camera initialization failed ({e}). Switching to LOOPBACK mode.")
             current_mode = "LOOPBACK"
@@ -320,17 +323,23 @@ def main():
                 ret, frame = cap.read()
                 if ret and frame is not None:
                     data, bbox, _ = detector.detectAndDecode(frame)
+                    if not data:
+                        # Fallback Pass 2: Grayscale with histogram equalization to cut through screen glare
+                        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                        enhanced = cv2.equalizeHist(gray)
+                        data, bbox, _ = detector.detectAndDecode(enhanced)
+
                     if data:
                         try:
                             payload = json.loads(data)
                         except Exception:
                             pass
-                        if bbox is not None:
-                            n = len(bbox[0])
-                            for j in range(n):
-                                p1 = tuple(map(int, bbox[0][j]))
-                                p2 = tuple(map(int, bbox[0][(j + 1) % n]))
-                                cv2.line(frame, p1, p2, (0, 255, 0), 3)
+                        if bbox is not None and len(bbox) > 0:
+                            try:
+                                pts = np.int32(bbox).reshape(-1, 2)
+                                cv2.polylines(frame, [pts], True, (0, 255, 0), 3)
+                            except Exception:
+                                pass
             else:
                 try:
                     data, _ = loop_sock.recvfrom(65535)
@@ -381,18 +390,19 @@ def main():
 
                         scada_info = {
                             "facility": item.get("facility", "BARC / NPCIL Kudankulam Unit 1 (PWR)"),
-                            "p": item.get("p", item.get("p_bar", item.get("pressure_bar", 155.5))),
-                            "tavg": item.get("tavg", item.get("tavg_c", item.get("core_temp_c", 310.0))),
-                            "flow": item.get("flow", item.get("wrca_kgs", item.get("coolant_flow_kgs", 16515.8))),
-                            "mw": item.get("mw", item.get("mwe_electric", item.get("output_mwe", 955.3))),
-                            "cpu": item.get("cpu", item.get("host_cpu_pct", item.get("container_cpu_pct", 1.2))),
-                            "ram": item.get("ram", item.get("host_ram_pct", item.get("container_mem_pct", 2.8))),
+                            "p": round(float(item.get("p", item.get("p_bar", item.get("pressure_bar", 155.5)))), 1),
+                            "tavg": round(float(item.get("tavg", item.get("tavg_c", item.get("core_temp_c", 310.0)))), 1),
+                            "flow": round(float(item.get("flow", item.get("wrca_kgs", item.get("coolant_flow_kgs", 16515.8)))), 1),
+                            "mw": round(float(item.get("mw", item.get("mwe_electric", item.get("output_mwe", 955.3)))), 1),
+                            "cpu": round(float(item.get("cpu", item.get("host_cpu_pct", item.get("container_cpu_pct", 1.2)))), 1),
+                            "ram": round(float(item.get("ram", item.get("host_ram_pct", item.get("container_mem_pct", 2.8)))), 1),
                             "state": item.get("state", item.get("reactor_state", "NOMINAL_FULL_POWER")),
                             "atk": item.get("atk", item.get("attack_type", "")),
                         }
 
-                        # Print genuine scanned telemetry directly to terminal
-                        print(f"[✓ OPTICAL DECODED] Frame #{seq:04d} | {src_node} | Pressure: {scada_info['p']:.1f} bar | Temp: {scada_info['tavg']:.1f} °C | Flow: {scada_info['flow']:.0f} kg/s | Output: {scada_info['mw']:.1f} MWe | State: {scada_info['state']}")
+                        # Print genuine scanned telemetry directly to terminal (Exact Docker Terminal Match)
+                        state_tag = "[NOMINAL]" if scada_info["state"] in ("NOMINAL", "NOMINAL_FULL_POWER") else f"[{scada_info['state']}]"
+                        print(f"[{time.strftime('%H:%M:%S')}] {state_tag} Pressure: {scada_info['p']:5.1f} bar | Temp: {scada_info['tavg']:5.1f} C | Flow: {scada_info['flow']:7.1f} kg/s | Power: {scada_info['mw']:5.1f} MWe | State: {scada_info['state']}")
 
                         # Dispatch end-to-end optical transit events to React dashboard with full physics
                         notify_dashboard_packet(src_node, "tx-diode", size=pkt_size, threat=stats["is_alert"], feat=feat, scada=scada_info, dashboard_url=args.dashboard_url)
@@ -425,7 +435,7 @@ def main():
             if not headless:
                 dashboard = render_dashboard(frame, logs_feed, stats, current_mode)
                 cv2.imshow("CHRONOS Air-Gapped SOC Dashboard", dashboard)
-                key = cv2.waitKey(30) & 0xFF
+                key = cv2.waitKey(1) & 0xFF
                 if key == ord('q'):
                     break
                 elif key == 32:  # SPACE bar toggles mode

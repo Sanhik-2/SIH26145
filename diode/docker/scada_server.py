@@ -356,6 +356,20 @@ def hmi_server():
         except Exception:
             pass
 
+def get_docker_gateway_ip():
+    """Detects host gateway IP from container /proc/net/route."""
+    try:
+        if os.path.exists("/proc/net/route"):
+            with open("/proc/net/route", "r") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 3 and parts[1] == "00000000":
+                        gw_hex = parts[2]
+                        return socket.inet_ntoa(int(gw_hex, 16).to_bytes(4, byteorder="little"))
+    except Exception:
+        pass
+    return None
+
 def send_to_diode(pkt):
     """Sends UDP flow record to optical data diode gateway."""
     data = json.dumps(pkt).encode("utf-8")
@@ -365,6 +379,10 @@ def send_to_diode(pkt):
         ("172.17.0.1", DIODE_PORT),
         ("127.0.0.1", DIODE_PORT)
     ]
+    gw_ip = get_docker_gateway_ip()
+    if gw_ip and gw_ip not in [t[0] for t in targets]:
+        targets.insert(0, (gw_ip, DIODE_PORT))
+
     for host, port in targets:
         try:
             out_sock.sendto(data, (host, port))
@@ -380,39 +398,47 @@ def telemetry_emitter():
             rec = active_records[current_idx % len(active_records)]
             current_idx += 1
 
-        p_bar = round(float(rec.get("P", 155.5)), 2)
-        tavg_c = round(float(rec.get("TAVG", 310.0)), 2)
-        tha_c = round(float(rec.get("THA", 327.8)), 2)
-        tca_c = round(float(rec.get("TCA", 292.2)), 2)
+        p_bar = round(float(rec.get("P", 155.5)), 1)
+        tavg_c = round(float(rec.get("TAVG", 310.0)), 1)
+        tha_c = round(float(rec.get("THA", 327.8)), 1)
+        tca_c = round(float(rec.get("TCA", 292.2)), 1)
         wrca_kgs = round(float(rec.get("WRCA", 16515.8)), 1)
-        psga_bar = round(float(rec.get("PSGA", 67.0)), 2)
+        psga_bar = round(float(rec.get("PSGA", 67.0)), 1)
         qmwt = round(float(rec.get("QMWT", 2895.0)), 1)
         mwe = round(qmwt * 0.33, 1)
 
         event_type = "ROUTINE_SCADA" if reactor_state == "NOMINAL_FULL_POWER" else "SCADA_PHYSICAL_ANOMALY"
 
         # Continuous clean text telemetry log line visible in Docker Desktop Logs tab
-        status_tag = "[NOMINAL]" if reactor_state == "NOMINAL_FULL_POWER" else "[PUMP TRIP - LOF]"
+        status_tag = "[NOMINAL]" if reactor_state == "NOMINAL_FULL_POWER" else f"[{reactor_state}]"
         print(f"[{time.strftime('%H:%M:%S')}] {status_tag} Pressure: {p_bar:5.1f} bar | Temp: {tavg_c:5.1f} C | Flow: {wrca_kgs:7.1f} kg/s | Power: {mwe:5.1f} MWe | State: {reactor_state}")
 
         pkt = {
             "node_id": 1,
             "facility": "BARC_Kudankulam_1",
+            "src": "nuclear-scada",
             "dataset": "NPPAD_Nature_Sci_Data_2022",
             "reactor_state": reactor_state,
+            "state": reactor_state,
             "event_type": event_type,
             "seq": seq,
             "time": time.strftime("%H:%M:%S"),
             "ts": time.strftime("%H:%M:%S"),
             "p_bar": p_bar,
+            "p": p_bar,
             "tavg_c": tavg_c,
+            "tavg": tavg_c,
             "tha_c": tha_c,
             "tca_c": tca_c,
             "wrca_kgs": wrca_kgs,
+            "flow": wrca_kgs,
             "psga_bar": psga_bar,
             "mwe_electric": mwe,
+            "mw": mwe,
             "host_cpu_pct": stats["cpu_pct"],
+            "cpu": stats["cpu_pct"],
             "host_ram_pct": stats["memory_pct"],
+            "ram": stats["memory_pct"],
             "host_ram_mb": stats["memory_mb"],
             "payload": f"NPPAD [{reactor_state}] [P:{p_bar}bar, Tavg:{tavg_c}C, Flow:{wrca_kgs}kg/s, Power:{mwe}MWe, CPU:{stats['cpu_pct']}%]"
         }
