@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, Lock, Radio, Cpu, Zap, Camera, Activity, AlertTriangle, RotateCcw, Flame, Gauge, Server } from 'lucide-react';
 import PhoneCameraScanner from './PhoneCameraScanner';
 
-export default function HardwareDiodeTopology({ isStreaming, isAttacking, packetRate = 12 }) {
+export default function HardwareDiodeTopology({ packetEvent = null, isStreaming = false, isAttacking = false, packetRate = 12 }) {
   const [showPhoneScanner, setShowPhoneScanner] = useState(false);
   const canvasRef = useRef(null);
+  const particlesRef = useRef([]);
 
   const [nuclearData, setNuclearData] = useState({
     facility: "BARC / NPCIL Kudankulam Unit 1 (PWR)",
@@ -64,13 +65,29 @@ export default function HardwareDiodeTopology({ isStreaming, isAttacking, packet
     setActionLoading(false);
   };
 
-  // Animated optical photon flow simulation on canvas
+  // Trigger optical laser photon pulse when real packet transit event occurs
+  useEffect(() => {
+    if (!packetEvent) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const isThreat = Boolean(packetEvent.threat) || isAttacking;
+
+    particlesRef.current.push({
+      x: canvas.width * 0.20,
+      y: canvas.height * 0.50 + (Math.random() - 0.5) * 8,
+      vx: 3.0,
+      size: 2.4,
+      color: isThreat ? '#f43f5e' : '#38bdf8',
+      trail: [],
+    });
+  }, [packetEvent, isAttacking]);
+
+  // Animated optical photon flow on canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     let animationId;
-    let particles = [];
 
     let resizeObserver;
     const resize = () => {
@@ -86,38 +103,38 @@ export default function HardwareDiodeTopology({ isStreaming, isAttacking, packet
       resizeObserver.observe(canvas.parentElement);
     }
 
-    // Constant-velocity particle generator
-    const spawnRate = isAttacking ? 4 : (isStreaming ? 1.5 : 0.4);
-    const particleSpeed = 2.5; // Steady, non-racing speed
+    const particleSpeed = 2.5;
 
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      if (Math.random() < spawnRate * 0.12) {
-        particles.push({
+      // ONLY spawn synthetic pulse if manual streaming is explicitly toggled by user
+      if (isStreaming && Math.random() < 0.04) {
+        particlesRef.current.push({
           x: canvas.width * 0.20,
-          y: canvas.height * 0.50 + (Math.random() - 0.5) * 12,
+          y: canvas.height * 0.50 + (Math.random() - 0.5) * 10,
           vx: particleSpeed,
-          vy: 0,
           size: 2.0,
           color: isAttacking ? '#f43f5e' : '#38bdf8',
           trail: []
         });
       }
 
-      // Update and draw particles
-      particles.forEach((p, idx) => {
+      // Update and draw real optical particles
+      const particles = particlesRef.current;
+      for (let idx = particles.length - 1; idx >= 0; idx--) {
+        const p = particles[idx];
         p.trail.push({ x: p.x, y: p.y });
         if (p.trail.length > 6) p.trail.shift();
 
         p.x += p.vx;
 
-        // Draw crisp laser trail (no heavy blur)
+        // Draw crisp laser trail
         for (let i = 0; i < p.trail.length - 1; i++) {
           ctx.beginPath();
           ctx.strokeStyle = p.color;
-          ctx.globalAlpha = (i / p.trail.length) * 0.45;
-          ctx.lineWidth = 1.2;
+          ctx.globalAlpha = (i / p.trail.length) * 0.5;
+          ctx.lineWidth = 1.3;
           ctx.moveTo(p.trail[i].x, p.trail[i].y);
           ctx.lineTo(p.trail[i + 1].x, p.trail[i + 1].y);
           ctx.stroke();
@@ -127,14 +144,14 @@ export default function HardwareDiodeTopology({ isStreaming, isAttacking, packet
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fillStyle = p.color;
-        ctx.globalAlpha = 0.9;
+        ctx.globalAlpha = 0.95;
         ctx.fill();
 
         // Destination reached
         if (p.x > canvas.width * 0.82) {
           particles.splice(idx, 1);
         }
-      });
+      }
 
       ctx.globalAlpha = 1.0;
       animationId = requestAnimationFrame(animate);

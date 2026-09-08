@@ -9,6 +9,8 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
   const [hasCamera, setHasCamera] = useState(true);
   const [cameraActive, setCameraActive] = useState(false);
   const [facingMode, setFacingMode] = useState('environment'); // 'environment' for rear camera
+  const [videoDevices, setVideoDevices] = useState([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [decodedCount, setDecodedCount] = useState(0);
   const [lastDecodedPkt, setLastDecodedPkt] = useState(null);
@@ -32,6 +34,30 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
     }
   }, []);
 
+  // Enumerate camera devices and auto-detect Iriun Webcam (USB / Wi-Fi from phone)
+  useEffect(() => {
+    const detectCameras = async () => {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoInputs = devices.filter(d => d.kind === 'videoinput');
+          setVideoDevices(videoInputs);
+
+          // Auto-select Iriun Webcam if detected
+          const iriun = videoInputs.find(d => /iriun/i.test(d.label));
+          if (iriun && !selectedDeviceId) {
+            setSelectedDeviceId(iriun.deviceId);
+          } else if (videoInputs.length > 0 && !selectedDeviceId) {
+            setSelectedDeviceId(videoInputs[0].deviceId);
+          }
+        } catch (e) {
+          console.warn("Could not enumerate video devices:", e);
+        }
+      }
+    };
+    detectCameras();
+  }, []);
+
   // Switch to HTTPS for real-time 30 FPS video streaming
   const handleSwitchToHttps = () => {
     if (typeof window !== 'undefined') {
@@ -43,9 +69,10 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
     }
   };
 
-  // Start Real-Time 30 FPS Camera Feed
-  const startCamera = async () => {
+  // Start Real-Time 30 FPS Camera Feed (Supports Iriun Webcam over USB cable)
+  const startCamera = async (overrideDeviceId) => {
     setErrorMsg('');
+    const devId = overrideDeviceId || selectedDeviceId;
 
     // Check if mediaDevices API is available (only present in Secure Contexts in modern mobile browsers)
     if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -65,8 +92,25 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
 
-      // Tiered constraint fallbacks to guarantee camera starts on any device
-      const constraintCandidates = [
+      // Tiered constraint candidates: prioritize explicit device ID (e.g. Iriun Webcam)
+      const constraintCandidates = [];
+      if (devId) {
+        constraintCandidates.push(
+          {
+            video: {
+              deviceId: { exact: devId },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+            audio: false,
+          },
+          {
+            video: { deviceId: { exact: devId } },
+            audio: false,
+          }
+        );
+      }
+      constraintCandidates.push(
         {
           video: {
             facingMode: { ideal: facingMode },
@@ -87,7 +131,7 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
           video: true,
           audio: false,
         },
-      ];
+      );
 
       let stream = null;
       let lastErr = null;
@@ -105,6 +149,18 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
       }
 
       streamRef.current = stream;
+
+      // Re-enumerate devices to fetch actual labels now that permission is granted
+      if (navigator.mediaDevices.enumerateDevices) {
+        navigator.mediaDevices.enumerateDevices().then(devs => {
+          const videoInputs = devs.filter(d => d.kind === 'videoinput');
+          setVideoDevices(videoInputs);
+          const iriun = videoInputs.find(d => /iriun/i.test(d.label));
+          if (iriun && !devId) {
+            setSelectedDeviceId(iriun.deviceId);
+          }
+        }).catch(() => {});
+      }
 
       // Check for torch / flashlight support
       const videoTrack = stream.getVideoTracks()[0];
@@ -165,11 +221,11 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
   };
 
   useEffect(() => {
-    startCamera();
+    startCamera(selectedDeviceId);
     return () => {
       stopCamera();
     };
-  }, [facingMode]);
+  }, [facingMode, selectedDeviceId]);
 
   // Optical QR Real-Time Continuous Decoding Loop via jsQR
   useEffect(() => {
@@ -290,7 +346,7 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
       const feat = payload.feat || [1.0, 128, 3.5, 1.0, 0];
       const size = payload.size || feat[1] || 128;
       const isThreat = Boolean(payload.atk);
-      const src = payload.src || (isThreat ? 'ews-alpha' : 'plc-01');
+      const src = payload.src || payload.facility || (isThreat ? 'redteam-attacker' : 'nuclear-scada');
 
       // Extract authentic Kudankulam PWR SCADA Telemetry (NPPAD 2022)
       const p = payload.p ?? payload.pressure_bar ?? 155.5;
@@ -364,10 +420,11 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
       setDecodedCount(c => c + 1);
       setLastDecodedPkt({
         seq: decodedCount + 1,
-        src: 'optical-qr',
+        src: 'optical-qr-node',
         size: rawText.length,
         threat: false,
         atk: 'RAW_DATA',
+        feat: [1.0, rawText.length, 3.5, 1.0, 0],
         time: new Date().toLocaleTimeString(),
       });
     }
@@ -377,28 +434,54 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
     setFacingMode(prev => (prev === 'environment' ? 'user' : 'environment'));
   };
 
+  const selectedDeviceObj = videoDevices.find(d => d.deviceId === selectedDeviceId);
+  const isIriunActive = selectedDeviceObj && /iriun/i.test(selectedDeviceObj.label);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4">
       <div className="bg-[#0c0e14] border border-zinc-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[96vh]">
         {/* Modal Header */}
-        <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-950">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-emerald-950/70 border border-emerald-700/60 text-emerald-400">
+        <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-950 gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 rounded-lg bg-emerald-950/70 border border-emerald-700/60 text-emerald-400 shrink-0">
               <Camera className="w-4 h-4 animate-pulse" />
             </div>
-            <div>
-              <h3 className="text-xs sm:text-sm font-semibold text-zinc-100 font-mono flex items-center gap-2">
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-sm font-semibold text-zinc-100 font-mono flex items-center gap-2 flex-wrap">
                 REAL-TIME OPTICAL CAMERA SCANNER
                 <span className="text-[9px] sm:text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
                   30 FPS LIVE
                 </span>
+                {isIriunActive && (
+                  <span className="text-[9px] sm:text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold">
+                    📱 IRIUN USB
+                  </span>
+                )}
               </h3>
-              <p className="text-[11px] text-zinc-400 hidden sm:block">
+              <p className="text-[11px] text-zinc-400 hidden sm:block truncate">
                 Continuous optical air-gap packet monitoring — zero manual snapping required
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {videoDevices.length > 1 && (
+              <select
+                value={selectedDeviceId}
+                onChange={(e) => {
+                  const newId = e.target.value;
+                  setSelectedDeviceId(newId);
+                  startCamera(newId);
+                }}
+                className="px-2 py-1 text-[11px] font-mono rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-200 hover:border-emerald-500/60 focus:outline-none focus:border-emerald-500 cursor-pointer max-w-[140px] sm:max-w-[200px] truncate"
+                title="Select Camera Input (e.g. Iriun Webcam USB)"
+              >
+                {videoDevices.map((dev, idx) => (
+                  <option key={dev.deviceId || idx} value={dev.deviceId}>
+                    {dev.label ? (/iriun/i.test(dev.label) ? `📱 ${dev.label} (Phone USB)` : `📷 ${dev.label}`) : `Camera ${idx + 1}`}
+                  </option>
+                ))}
+              </select>
+            )}
             {torchSupported && (
               <button
                 onClick={toggleTorch}

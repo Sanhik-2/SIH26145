@@ -1,87 +1,48 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { 
-  ShieldAlert, 
-  ShieldCheck, 
-  AlertTriangle, 
-  Radio, 
-  Database, 
-  Cpu, 
-  Server, 
-  Lock, 
-  Zap, 
-  FileText, 
-  X, 
-  ZoomIn, 
-  ZoomOut, 
-  RotateCcw, 
-  Info,
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  ShieldAlert,
+  ShieldCheck,
+  Zap,
+  Lock,
+  RotateCcw,
+  ZoomIn,
+  ZoomOut,
+  X,
+  Layers,
+  Flame,
+  Radio,
   Activity,
-  Layers
+  Cpu
 } from 'lucide-react';
 
-// Node definitions reflecting the actual physical air-gap network
-const INITIAL_NODES = [
-  // Zone A: Air-Gapped High Security In-Zone (Left)
+// Baseline Architectural Backbone: Real Hardware Diode Bridge
+const BASE_NODES = [
+  // Zone A: Active In-Zone Nuclear SCADA Node (BARC Kudankulam Unit 1 PWR)
   {
-    id: 'plc-01',
-    label: 'SCADA PLC-01',
-    sublabel: 'Turbine Governor',
-    ip: '10.0.1.10',
+    id: 'nuclear-scada',
+    label: 'Kudankulam Unit 1 PWR',
+    sublabel: 'Primary Reactor SCADA',
+    ip: '192.168.1.10:502',
     zone: 'in-zone',
-    x: 140,
-    y: 140,
+    x: 180,
+    y: 200,
     vx: 0,
     vy: 0,
-    radius: 18,
-    type: 'controller',
-    normalRate: '4 pkts/s',
+    radius: 22,
+    type: 'scada',
+    normalRate: '1 packet/s',
+    p_bar: 155.5,
+    tavg_c: 310.0,
+    flow_kgs: 16515.8,
+    mw: 955.3,
+    state: 'NOMINAL_FULL_POWER',
   },
-  {
-    id: 'plc-02',
-    label: 'SCADA PLC-02',
-    sublabel: 'Cooling Loop',
-    ip: '10.0.1.11',
-    zone: 'in-zone',
-    x: 140,
-    y: 260,
-    vx: 0,
-    vy: 0,
-    radius: 18,
-    type: 'controller',
-    normalRate: '3 pkts/s',
-  },
-  {
-    id: 'ews-alpha',
-    label: 'Workstation Alpha',
-    sublabel: 'Engineering Terminal',
-    ip: '10.0.1.25',
-    zone: 'in-zone',
-    x: 270,
-    y: 140,
-    vx: 0,
-    vy: 0,
-    radius: 20,
-    type: 'workstation',
-    normalRate: '12 pkts/s',
-  },
-  {
-    id: 'db-historian',
-    label: 'Process Historian',
-    sublabel: 'SCADA Telemetry DB',
-    ip: '10.0.1.50',
-    zone: 'in-zone',
-    x: 270,
-    y: 260,
-    vx: 0,
-    vy: 0,
-    radius: 19,
-    type: 'database',
-    normalRate: '8 pkts/s',
-  },
+
+  // Optical Egress Diode Transmitter
   {
     id: 'tx-diode',
-    label: 'In-Zone TX Diode',
-    sublabel: 'Simplex Laser Emitter',
+    label: 'Optical TX Diode',
+    sublabel: 'Simplex QR / Photon Emitter',
     ip: '10.0.1.1',
     zone: 'diode-tx',
     x: 410,
@@ -90,30 +51,30 @@ const INITIAL_NODES = [
     vy: 0,
     radius: 22,
     type: 'transmitter',
-    normalRate: '18 pkts/s',
+    normalRate: 'Continuous Simplex',
   },
 
-  // Optical Air-Gap Barrier (Center)
+  // Optical Air-Gap Barrier (Center - Strict Galvanic Gap)
   {
     id: 'optical-gap',
-    label: 'Optical Air-Gap Isolator',
-    sublabel: '100% Galvanic Simplex',
-    ip: 'PHYSICAL GAP',
+    label: 'Physical Optical Air-Gap',
+    sublabel: '100% Galvanic Isolation',
+    ip: 'ZERO COPPER / RF RETURN',
     zone: 'barrier',
     x: 540,
     y: 200,
     vx: 0,
     vy: 0,
-    radius: 15,
+    radius: 16,
     type: 'barrier',
-    normalRate: 'Simplex Fiber',
+    normalRate: 'Photons Only',
   },
 
-  // Zone B: Monitored Scanner Side / SOC Subnet (Right)
+  // Zone B: Monitored Air-Gapped Scanner Enclave (Right)
   {
     id: 'rx-diode',
-    label: 'Scanner RX Diode',
-    sublabel: 'Photodiode Detector',
+    label: 'Optical RX Diode',
+    sublabel: 'Iriun / Photodiode Scanner',
     ip: '192.168.10.1',
     zone: 'diode-rx',
     x: 670,
@@ -122,16 +83,16 @@ const INITIAL_NODES = [
     vy: 0,
     radius: 22,
     type: 'receiver',
-    normalRate: '18 pkts/s',
+    normalRate: 'Continuous Ingest',
   },
   {
     id: 'njode-core',
-    label: 'CHRONOS NJ-ODE',
-    sublabel: 'Continuous Latent Engine',
+    label: 'CHRONOS NJ-ODE Core',
+    sublabel: 'Continuous Latent AI Engine',
     ip: '192.168.10.5',
     zone: 'scanner',
     x: 810,
-    y: 140,
+    y: 160,
     vx: 0,
     vy: 0,
     radius: 24,
@@ -139,23 +100,9 @@ const INITIAL_NODES = [
     normalRate: 'Inference 1.1ms',
   },
   {
-    id: 'sync-srv',
-    label: 'Web Sync Gateway',
-    sublabel: 'NTP & Benign Sync',
-    ip: '192.168.10.15',
-    zone: 'scanner',
-    x: 810,
-    y: 260,
-    vx: 0,
-    vy: 0,
-    radius: 18,
-    type: 'server',
-    normalRate: '0.15 pkts/s',
-  },
-  {
     id: 'soc-siem',
-    label: 'SOC Alert Sink',
-    sublabel: 'Incident Dispatcher',
+    label: 'Air-Gapped SOC SIEM',
+    sublabel: 'Defense Terminal HUD',
     ip: '192.168.10.100',
     zone: 'scanner',
     x: 940,
@@ -164,45 +111,38 @@ const INITIAL_NODES = [
     vy: 0,
     radius: 20,
     type: 'siem',
-    normalRate: 'Active Polling',
+    normalRate: 'Real-Time Telemetry',
   },
 ];
 
-const INITIAL_EDGES = [
-  { from: 'plc-01', to: 'tx-diode' },
-  { from: 'plc-02', to: 'tx-diode' },
-  { from: 'ews-alpha', to: 'tx-diode' },
-  { from: 'db-historian', to: 'tx-diode' },
-  { from: 'ews-alpha', to: 'db-historian' },
-  { from: 'plc-01', to: 'plc-02' },
-  // Simplex optical bridge
+const BASE_EDGES = [
+  // In-Zone SCADA to Diode Transmitter
+  { from: 'nuclear-scada', to: 'tx-diode' },
+  // Unidirectional Simplex Optical Diode Bridge
   { from: 'tx-diode', to: 'optical-gap', isDiodeBridge: true },
   { from: 'optical-gap', to: 'rx-diode', isDiodeBridge: true },
-  // Scanner side
+  // Scanner Enclave Internal Links
   { from: 'rx-diode', to: 'njode-core' },
-  { from: 'rx-diode', to: 'sync-srv' },
   { from: 'njode-core', to: 'soc-siem' },
-  { from: 'sync-srv', to: 'soc-siem' },
 ];
 
 export default function NetworkGraphView({ 
   currentScenario = 'calm', 
   score = 0.48, 
-  tau = 2.81,
+  tau = 2.464,
   packetEvent = null,
   isStreaming = true,
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
 
-  // Nodes state with physics coordinates
-  const [nodes, setNodes] = useState(INITIAL_NODES);
-  const [edges] = useState(INITIAL_EDGES);
+  // Dynamic Nodes & Edges: ONLY connected nodes exist on this topology!
+  const [nodes, setNodes] = useState(BASE_NODES);
+  const [edges, setEdges] = useState(BASE_EDGES);
 
-  // Active flying real packets (ONLY populated when real packets flow between systems)
+  // Real in-flight packets (ONLY populated when real packets flow)
   const activeParticlesRef = useRef([]);
-  const lastPacketRef = useRef(null);
-  const [inFlightCount, setInFlightCount] = useState(0);
+  const [lastPacketTime, setLastPacketTime] = useState(null);
 
   // Mouse interaction state
   const [hoveredNode, setHoveredNode] = useState(null);
@@ -214,244 +154,180 @@ export default function NetworkGraphView({
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0 });
 
-  // Map malware info dynamically based on current scenario
+  // Live node status mapping based on REAL packet events and SCADA physics
   const getMalwareStatus = (nodeId) => {
-    if (currentScenario === 'ddos_flood') {
-      if (nodeId === 'plc-02') {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return { isInfected: false, severity: 'CLEAN', color: '#10b981', name: 'Nominal Baseline' };
+
+    if (node.isAttacking || node.type === 'attacker') {
+      return {
+        isInfected: true,
+        severity: 'CRITICAL',
+        color: '#f43f5e',
+        name: 'Adversary Cyber Warfare Injection',
+        description: 'Unauthorized host transmitting hostile payloads / port sweep against SCADA infrastructure.',
+        rate: node.lastRate || 'Active Attack Vector',
+        dominantChannel: 'burst / packet volume surge',
+        peakScore: score.toFixed(2),
+        cve: 'NTRO PS #26145 / Cyber Threat',
+      };
+    }
+
+    if (nodeId === 'nuclear-scada') {
+      const isTrip = node.state === 'LOSS_OF_FLOW' || (node.flow_kgs && node.flow_kgs < 10000);
+      const isLoca = node.state === 'LOCA_ACCIDENT';
+      if (isTrip || isLoca) {
         return {
           isInfected: true,
           severity: 'CRITICAL',
           color: '#f43f5e',
-          name: 'Target.CoolingLoop.DDoSInundation',
-          description: 'Cooling loop controller under high-rate reflection SYN/UDP volumetric flood (200 pkts/s, tiny 64B frames).',
-          rate: '200.0 pkts/s (INBOUND)',
-          dominantChannel: 'direction (inbound) / burst',
-          peakScore: score.toFixed(1),
-          cve: 'CWE-400 / SYN-UDP-Flood',
-          traces: [
-            'T-0.3s | 198.51.100.42:53211 → 10.0.1.11:80 | TCP SYN | 64 B | H=2.10 bits | 🚨 INBOUND FLOOD (flow 0xA11F)',
-            'T-0.2s | 203.0.113.88:41904 → 10.0.1.11:80  | TCP SYN | 64 B | H=2.08 bits | 🚨 SPOOFED SOURCE (flow 0xB472)',
-            'T-0.1s | 192.0.2.14:62890 → 10.0.1.11:80    | TCP SYN | 64 B | H=2.12 bits | 🚨 VOLUMETRIC SURGE (flow 0xC931)',
-          ]
+          name: isLoca ? 'CRITICAL: LOSS OF COOLANT ACCIDENT' : 'CRITICAL: COOLANT PUMP TRIPPED (LOF)',
+          description: isLoca
+            ? 'Severe primary circuit depressurization (LOCA transient active).'
+            : 'Primary reactor coolant pump tripped via unauthorized command injection. Coolant flow collapsed.',
+          rate: 'Physical SCADA Anomaly',
+          dominantChannel: 'NPPAD WRCA transient',
+          peakScore: Math.max(score, 2.85).toFixed(2),
         };
       }
-      if (nodeId === 'rx-diode' || nodeId === 'tx-diode') {
-        return {
-          isInfected: false,
-          isTransitThreat: true,
-          severity: 'CRITICAL',
-          color: '#f43f5e',
-          name: 'Optical Receiver Saturated',
-          description: 'Simplex channel inundated with inbound traffic (direction=1, 200 pkts/s). Multiple spoofed flow hashes detected.',
-          rate: '200.0 pkts/s',
-          dominantChannel: 'direction (inbound)',
-          peakScore: score.toFixed(1),
-        };
-      }
-      if (nodeId === 'njode-core') {
-        return {
-          isInfected: false,
-          isTriggered: true,
-          severity: 'ALERT',
-          color: '#f43f5e',
-          name: 'Volumetric DDoS Anomaly Confirmed',
-          description: 'Continuous latent space breach: S = ' + score.toFixed(1) + ' > τ = 2.81. Attributed to direction (inbound) and burst.',
-        };
-      }
-    } else if (currentScenario === 'tls_c2') {
-      if (nodeId === 'ews-alpha') {
-        return {
-          isInfected: true,
-          severity: 'HIGH',
-          color: '#8b5cf6',
-          name: 'Malware.EncryptedTLS.Ghost',
-          description: 'Engineering terminal running covert TLS C2 session. Ciphertext entropy ~7.9 bits is indistinguishable from benign TLS; detected passively via timing regularity (T0 ± δ) and fixed 512B frames without payload decryption.',
-          rate: 'Periodic Cadence (1.8s)',
-          dominantChannel: 'iat (metadata-only)',
-          peakScore: score.toFixed(1),
-          cve: 'CVE-2026-9211',
-          traces: [
-            'T-0.4s | 10.0.1.25:49812 → 192.168.10.1:443 | TLSv1.3 | 512 B | H=7.91 bits | 🚨 METADATA REGULARITY (iat=1.80s)',
-            'T-0.2s | 10.0.1.25:49812 → 192.168.10.1:443 | TLSv1.3 | 512 B | H=7.89 bits | 🚨 RIGID FRAME CADENCE (T0±δ)',
-            'T-0.0s | 10.0.1.25:49812 → 192.168.10.1:443 | TLSv1.3 | 512 B | H=7.92 bits | 🚨 PASSIVE TIMING BREACH',
-          ]
-        };
-      }
-      if (nodeId === 'tx-diode' || nodeId === 'rx-diode' || nodeId === 'njode-core') {
-        return {
-          isInfected: false,
-          isTransitThreat: true,
-          severity: 'ALERT',
-          color: '#8b5cf6',
-          name: 'Encrypted Channel Timing Anomaly',
-          description: 'Non-benign inter-arrival distribution detected across TLS flows without decryption.',
-          peakScore: score.toFixed(1),
-        };
-      }
-    } else if (currentScenario === 'portscan') {
-      if (nodeId === 'ews-alpha') {
-        return {
-          isInfected: true,
-          severity: 'HIGH',
-          color: '#3b82f6',
-          name: 'Recon.HorizontalPortScan.FanOut',
-          description: 'Compromised workstation performing horizontal port sweep across 128+ destination ports. Burst of small 44-60B probe frames, single source origin, high distinct flow entropy.',
-          rate: 'Rapid Probe Burst (44B)',
-          dominantChannel: 'burst / bytes',
-          peakScore: score.toFixed(1),
-          cve: 'CWE-200 / Network-Recon',
-          traces: [
-            'T-0.3s | 10.0.1.25:54321 → 10.0.1.10:445  | TCP SYN | 44 B | H=1.85 bits | 🚨 FAN-OUT PORT PROBE (flow 0x8F1A)',
-            'T-0.2s | 10.0.1.25:54321 → 10.0.1.11:502  | TCP SYN | 44 B | H=1.84 bits | 🚨 FAN-OUT PORT PROBE (flow 0x8F1B)',
-            'T-0.1s | 10.0.1.25:54321 → 10.0.1.50:4840 | TCP SYN | 44 B | H=1.87 bits | 🚨 RECON SWEEP SURGE (flow 0x8F1C)',
-          ]
-        };
-      }
-      if (nodeId === 'plc-01' || nodeId === 'plc-02' || nodeId === 'db-historian') {
-        return {
-          isInfected: false,
-          isTransitThreat: true,
-          severity: 'SUSPECTED',
-          color: '#60a5fa',
-          name: 'Probed Controller Target',
-          description: 'Targeted by horizontal reconnaissance port sweep from Workstation Alpha.',
-          rate: 'Probe Target',
-          dominantChannel: 'burst',
-          peakScore: score.toFixed(1),
-        };
-      }
-      if (nodeId === 'tx-diode' || nodeId === 'rx-diode' || nodeId === 'njode-core') {
-        return {
-          isInfected: false,
-          isTransitThreat: true,
-          severity: 'ALERT',
-          color: '#3b82f6',
-          name: 'Multi-Flow Reconnaissance Fan-Out',
-          description: 'Abnormal spike in distinct flow identifiers and tiny probe datagrams traversing the diode.',
-          peakScore: score.toFixed(1),
-        };
-      }
-    } else if (currentScenario === 'exfil_burst') {
-      if (nodeId === 'ews-alpha') {
-        return {
-          isInfected: true,
-          severity: 'CRITICAL',
-          color: '#ef4444',
-          name: 'Trojan.Exfil.LethalFlood',
-          description: 'Compromised engineering workstation actively flooding large 1400B exfil datagrams towards the simplex diode.',
-          rate: '66.7 pkts/s (BURST)',
-          dominantChannel: 'bytes (100%)',
-          peakScore: score.toFixed(1),
-          cve: 'CVE-2026-8803',
-          traces: [
-            'T-0.3s | 10.0.1.25:9999 → 10.0.1.1:9999 | UDP | 1400 B | H=7.82 bits | 🚨 ASYMMETRIC OUTBOUND BURST (flow 0xEE41)',
-            'T-0.2s | 10.0.1.25:9999 → 10.0.1.1:9999 | UDP | 1400 B | H=7.85 bits | 🚨 BULK EXFIL DETECTED (flow 0xEE41)',
-            'T-0.1s | 10.0.1.25:9999 → 10.0.1.1:9999 | UDP | 1400 B | H=7.84 bits | 🚨 SKEWED BYTE RATIO (flow 0xEE41)',
-          ]
-        };
-      }
-      if (nodeId === 'tx-diode' || nodeId === 'rx-diode') {
-        return {
-          isInfected: false,
-          isTransitThreat: true,
-          severity: 'ALERT',
-          color: '#f97316',
-          name: 'Diode Ingestion Anomaly Detected',
-          description: 'High byte volume burst traversing simplex link. Photodiode detector forwarding to NJ-ODE core.',
-          rate: '66.7 pkts/s',
-          dominantChannel: 'bytes',
-          peakScore: score.toFixed(1),
-        };
-      }
-      if (nodeId === 'njode-core') {
-        return {
-          isInfected: false,
-          isTriggered: true,
-          severity: 'ALERT',
-          color: '#ef4444',
-          name: 'Hysteresis Confirmed Alert (2/2)',
-          description: 'Continuous latent space breach: S = ' + score.toFixed(1) + ' > τ = 2.81. Attributed to bytes.',
-        };
-      }
-    } else if (currentScenario === 'c2_beacon') {
-      if (nodeId === 'plc-01') {
-        return {
-          isInfected: true,
-          severity: 'HIGH',
-          color: '#a855f7',
-          name: 'Backdoor.CobaltC2.Jitter',
-          description: 'Compromised PLC governor sending periodic high-entropy command-and-control heartbeats at 2.5s intervals.',
-          rate: 'Periodic (2.5s jittered)',
-          dominantChannel: 'entropy / iat',
-          peakScore: score.toFixed(1),
-          cve: 'CVE-2026-1640',
-          traces: [
-            'T-0.3s | 10.0.1.10:4840 → 198.51.100.99:8443 | TCP | 256 B | H=6.85 bits | 🚨 CADENCE BEACON (T0=2.5s, flow 0x7C11)',
-            'T-0.2s | 10.0.1.10:4840 → 198.51.100.99:8443 | TCP | 256 B | H=6.88 bits | 🚨 PERIODIC C2 HEARTBEAT (flow 0x7C11)',
-            'T-0.1s | 10.0.1.10:4840 → 198.51.100.99:8443 | TCP | 256 B | H=6.82 bits | 🚨 NON-BENIGN IAT PEAK',
-          ]
-        };
-      }
-      if (nodeId === 'tx-diode' || nodeId === 'rx-diode' || nodeId === 'njode-core') {
-        return {
-          isInfected: false,
-          isTransitThreat: true,
-          severity: 'SUSPECTED',
-          color: '#c084fc',
-          name: 'Periodic Entropy Breach',
-          description: 'Strict periodicity detected in irregular packet gaps. Attributed to timing/entropy.',
-          peakScore: score.toFixed(1),
-        };
-      }
-    } else if (currentScenario === 'dga_tunnel') {
-      if (nodeId === 'db-historian') {
-        return {
-          isInfected: true,
-          severity: 'HIGH',
-          color: '#f59e0b',
-          name: 'Tunnel.DNS.DGAv2',
-          description: 'Process historian hijacked by algorithmic domain generation exfiltration tunnel with 150-char high-entropy labels.',
-          rate: '2.5 pkts/s (DGA queries)',
-          dominantChannel: 'entropy (86.7%)',
-          peakScore: score.toFixed(1),
-          cve: 'CVE-2026-7508',
-          traces: [
-            'T-0.3s | 10.0.1.50:53 → 10.0.1.1:53 | DNS Query | 150 B | H=5.12 bits | 🚨 HIGH-ENTROPY DGA LABEL (flow 0x3D88)',
-            'T-0.2s | 10.0.1.50:53 → 10.0.1.1:53 | DNS Query | 150 B | H=5.08 bits | 🚨 ALGORITHMIC DOMAIN EXFIL (flow 0x3D88)',
-            'T-0.1s | 10.0.1.50:53 → 10.0.1.1:53 | DNS Query | 150 B | H=5.15 bits | 🚨 TUNNEL SURGE DETECTED',
-          ]
-        };
-      }
-      if (nodeId === 'tx-diode' || nodeId === 'rx-diode' || nodeId === 'njode-core') {
-        return {
-          isInfected: false,
-          isTransitThreat: true,
-          severity: 'ALERT',
-          color: '#fbbf24',
-          name: 'DGA Domain Anomaly Flagged',
-          description: 'Shannon entropy surge in packet headers exceeding normal manifold.',
-          peakScore: score.toFixed(1),
-        };
-      }
+      return {
+        isInfected: false,
+        severity: 'NOMINAL',
+        color: '#10b981',
+        name: '100% Full-Power Nominal Baseline',
+        description: 'Kudankulam Unit 1 PWR operating strictly within design basis. Primary coolant flow stable at 16,515 kg/s.',
+        rate: 'Routine 1.0s Telemetry',
+      };
+    }
+
+    if (nodeId === 'njode-core' && score > tau) {
+      return {
+        isInfected: false,
+        isTransitThreat: true,
+        severity: 'EVALUATING',
+        color: '#f59e0b',
+        name: 'Continuous Anomaly Confirmed',
+        description: `Latent neural jump-ODE reconstruction error exceeded calibrated threshold τ (${score.toFixed(3)} > ${tau.toFixed(3)}).`,
+        rate: 'Continuous Latent Grid',
+        peakScore: score.toFixed(2),
+      };
     }
 
     return {
       isInfected: false,
       severity: 'CLEAN',
       color: '#10b981',
-      name: 'Clean Benign Operation',
-      description: 'Device operating strictly within baseline parameters. Latent reconstruction error < τ.',
-      rate: 'Normal SCADA baseline',
+      name: 'Verified Physical Simplex',
+      description: 'Zero return copper/RF connection. Air-gap integrity 100% guaranteed.',
+      rate: 'Passive Simplex Egress',
     };
   };
 
-  // Main Canvas Render Loop (Physics & Animation)
+  // ----------------------------------------------------------------------
+  // DYNAMIC NODE REGISTRATION: Handle real packetEvent from backend / scanner
+  // ----------------------------------------------------------------------
+  useEffect(() => {
+    if (!packetEvent) return;
+    setLastPacketTime(Date.now());
+
+    const fromId = String(packetEvent.from || 'nuclear-scada').trim();
+    const toId = String(packetEvent.to || 'tx-diode').trim();
+    const isThreat = Boolean(packetEvent.threat);
+    const isDiodeBridge = Boolean(packetEvent.is_diode_bridge);
+    const isAlert = Boolean(packetEvent.is_alert);
+    const size = packetEvent.size || 128;
+    const scada = packetEvent.scada || {};
+
+    // 1. Dynamically ensure `fromId` and `toId` exist in `nodes`
+    setNodes(prevNodes => {
+      let updated = [...prevNodes];
+      let hasChanges = false;
+
+      // Ensure `fromId` exists
+      if (!updated.some(n => n.id === fromId)) {
+        hasChanges = true;
+        const inZoneCount = updated.filter(n => n.zone === 'in-zone').length;
+        const isAttacker = isThreat || fromId.toLowerCase().includes('red') || fromId.toLowerCase().includes('attack');
+        
+        updated.push({
+          id: fromId,
+          label: isAttacker ? 'Red Team Adversary' : (fromId.includes('node') ? `Node ${fromId}` : fromId),
+          sublabel: isAttacker ? 'Offensive Cyber Unit' : 'Connected Substation',
+          ip: isAttacker ? '192.168.1.150' : `10.0.1.${20 + inZoneCount}`,
+          zone: 'in-zone',
+          x: 140,
+          y: Math.min(420, 100 + inZoneCount * 90),
+          vx: 0,
+          vy: 0,
+          radius: isAttacker ? 21 : 18,
+          type: isAttacker ? 'attacker' : 'device',
+          normalRate: 'Live Stream',
+          isAttacking: isAttacker,
+        });
+      }
+
+      // Update SCADA telemetry on `nuclear-scada` if present in event
+      const pVal = packetEvent.p ?? packetEvent.pressure_bar ?? scada.p ?? scada.pressure_bar;
+      const flowVal = packetEvent.flow ?? packetEvent.coolant_flow_kgs ?? scada.flow ?? scada.coolant_flow_kgs;
+      const stateVal = packetEvent.state ?? packetEvent.reactor_state ?? scada.state ?? scada.reactor_state;
+      const tempVal = packetEvent.tavg ?? packetEvent.core_temp_c ?? scada.tavg ?? scada.core_temp_c;
+      const mwVal = packetEvent.mw ?? packetEvent.output_mwe ?? scada.mw ?? scada.output_mwe;
+
+      if (pVal !== undefined || flowVal !== undefined || stateVal !== undefined) {
+        updated = updated.map(n => {
+          if (n.id === 'nuclear-scada') {
+            return {
+              ...n,
+              p_bar: pVal !== undefined ? Number(pVal) : n.p_bar,
+              flow_kgs: flowVal !== undefined ? Number(flowVal) : n.flow_kgs,
+              state: stateVal || n.state,
+              tavg_c: tempVal !== undefined ? Number(tempVal) : n.tavg_c,
+              mw: mwVal !== undefined ? Number(mwVal) : n.mw,
+            };
+          }
+          return n;
+        });
+        hasChanges = true;
+      }
+
+      return hasChanges ? updated : prevNodes;
+    });
+
+    // 2. Dynamically ensure edge exists between `fromId` and `toId`
+    setEdges(prevEdges => {
+      if (prevEdges.some(e => e.from === fromId && e.to === toId)) {
+        return prevEdges;
+      }
+      return [...prevEdges, {
+        from: fromId,
+        to: toId,
+        isDiodeBridge: isDiodeBridge || fromId === 'tx-diode' || toId === 'optical-gap' || fromId === 'optical-gap' || toId === 'rx-diode',
+      }];
+    });
+
+    // 3. Spawn real in-flight packet animation
+    activeParticlesRef.current.push({
+      from: fromId,
+      to: toId,
+      progress: 0.0,
+      speedMultiplier: isThreat ? 1.5 : (isDiodeBridge ? 1.3 : 1.05),
+      isThreat: isThreat,
+      isDiodeBridge: isDiodeBridge || fromId === 'tx-diode' || toId === 'optical-gap' || fromId === 'optical-gap' || toId === 'rx-diode',
+      isAlert: isAlert,
+      size: Math.max(2.0, Math.min(3.6, Math.log2(size || 64) * 0.38)),
+    });
+  }, [packetEvent]);
+
+  // ----------------------------------------------------------------------
+  // Canvas Render Loop (Dieter Rams / Minimalist Pure Real Packet Graphics)
+  // ----------------------------------------------------------------------
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     let animationId;
     let resizeObserver;
+
     const resize = () => {
       const parent = canvas.parentElement;
       canvas.width = (parent && parent.clientWidth > 0) ? parent.clientWidth : 960;
@@ -464,93 +340,6 @@ export default function NetworkGraphView({
       resizeObserver.observe(canvas.parentElement);
     }
 
-    // Handle real packet events from backend or prop
-    const spawnEdgePacket = (from, to, threat = false, isDiode = false, isAlert = false, size = 64) => {
-      const edgeIdx = edges.findIndex(e => e.from === from && e.to === to);
-      if (edgeIdx !== -1) {
-        activeParticlesRef.current.push({
-          edgeIndex: edgeIdx,
-          progress: 0.0,
-          speedMultiplier: threat ? 1.6 : (isDiode ? 1.35 : 1.1),
-          isThreat: threat,
-          isDiodeBridge: isDiode || edges[edgeIdx].isDiodeBridge,
-          isAlert: isAlert,
-          size: Math.max(1.8, Math.min(3.2, Math.log2(size || 64) * 0.35)),
-        });
-      }
-    };
-
-    // Autonomous discrete packet trigger when in standalone simulation mode
-    let simTimer;
-    let simStep = 0;
-    if (isStreaming) {
-      simTimer = setInterval(() => {
-        simStep++;
-        const lastTs = lastPacketRef.current?.timestamp;
-        const timeSinceReal = lastTs ? (Date.now() - lastTs * 1000) : 999999;
-        
-        // If real backend packets are actively flowing, let them drive the animation
-        if (timeSinceReal < 2200) {
-          return;
-        }
-
-        // Discrete pulse schedule (packets only flow when actual event occurs)
-        if (simStep % 3 === 0) {
-          spawnEdgePacket('plc-01', 'tx-diode', false, false, false, 128);
-          setTimeout(() => spawnEdgePacket('tx-diode', 'optical-gap', false, true, false, 128), 180);
-          setTimeout(() => spawnEdgePacket('optical-gap', 'rx-diode', false, true, false, 128), 340);
-          setTimeout(() => spawnEdgePacket('rx-diode', 'njode-core', false, false, false, 128), 500);
-        }
-
-        if (simStep % 4 === 0) {
-          const isDDoS = currentScenario === 'ddos_flood';
-          spawnEdgePacket('plc-02', 'tx-diode', isDDoS, false, false, isDDoS ? 64 : 96);
-          setTimeout(() => spawnEdgePacket('tx-diode', 'optical-gap', isDDoS, true, false, 64), 180);
-          setTimeout(() => spawnEdgePacket('optical-gap', 'rx-diode', isDDoS, true, false, 64), 340);
-          setTimeout(() => spawnEdgePacket('rx-diode', 'njode-core', isDDoS, false, false, 64), 500);
-          if (isDDoS) {
-            setTimeout(() => spawnEdgePacket('njode-core', 'soc-siem', true, false, true, 64), 680);
-          }
-        }
-
-        if (simStep % 6 === 0) {
-          const isDGA = currentScenario === 'dga_tunnel';
-          spawnEdgePacket('db-historian', 'tx-diode', isDGA, false, false, isDGA ? 150 : 180);
-          setTimeout(() => spawnEdgePacket('tx-diode', 'optical-gap', isDGA, true, false, 150), 180);
-          setTimeout(() => spawnEdgePacket('optical-gap', 'rx-diode', isDGA, true, false, 150), 340);
-          setTimeout(() => spawnEdgePacket('rx-diode', 'njode-core', isDGA, false, false, 150), 500);
-          if (isDGA) {
-            setTimeout(() => spawnEdgePacket('njode-core', 'soc-siem', true, false, true, 150), 680);
-          }
-        }
-
-        if (currentScenario === 'exfil_burst') {
-          spawnEdgePacket('ews-alpha', 'tx-diode', true, false, false, 1400);
-          setTimeout(() => spawnEdgePacket('tx-diode', 'optical-gap', true, true, false, 1400), 120);
-          setTimeout(() => spawnEdgePacket('optical-gap', 'rx-diode', true, true, false, 1400), 240);
-          setTimeout(() => spawnEdgePacket('rx-diode', 'njode-core', true, false, false, 1400), 360);
-          setTimeout(() => spawnEdgePacket('njode-core', 'soc-siem', true, false, true, 1400), 480);
-        } else if (currentScenario === 'c2_beacon' && simStep % 8 === 0) {
-          spawnEdgePacket('ews-alpha', 'tx-diode', true, false, false, 256);
-          setTimeout(() => spawnEdgePacket('tx-diode', 'optical-gap', true, true, false, 256), 180);
-          setTimeout(() => spawnEdgePacket('optical-gap', 'rx-diode', true, true, false, 256), 340);
-          setTimeout(() => spawnEdgePacket('rx-diode', 'njode-core', true, false, false, 256), 500);
-          setTimeout(() => spawnEdgePacket('njode-core', 'soc-siem', true, false, true, 256), 680);
-        } else if (currentScenario === 'portscan' && simStep % 2 === 0) {
-          spawnEdgePacket('ews-alpha', 'tx-diode', true, false, false, 54);
-          setTimeout(() => spawnEdgePacket('tx-diode', 'optical-gap', true, true, false, 54), 140);
-          setTimeout(() => spawnEdgePacket('optical-gap', 'rx-diode', true, true, false, 54), 280);
-          setTimeout(() => spawnEdgePacket('rx-diode', 'njode-core', true, false, false, 54), 420);
-          setTimeout(() => spawnEdgePacket('njode-core', 'soc-siem', true, false, true, 54), 560);
-        } else if (currentScenario === 'tls_c2' && simStep % 6 === 0) {
-          spawnEdgePacket('ews-alpha', 'tx-diode', true, false, false, 512);
-          setTimeout(() => spawnEdgePacket('tx-diode', 'optical-gap', true, true, false, 512), 180);
-          setTimeout(() => spawnEdgePacket('optical-gap', 'rx-diode', true, true, false, 512), 340);
-          setTimeout(() => spawnEdgePacket('rx-diode', 'njode-core', true, false, false, 512), 500);
-        }
-      }, 120);
-    }
-
     const render = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -559,8 +348,8 @@ export default function NetworkGraphView({
       ctx.translate(transform.x, transform.y);
       ctx.scale(transform.k, transform.k);
 
-      // 1. Subtle, clean structural grid (Dieter Rams / Swiss ratio)
-      ctx.strokeStyle = 'rgba(39, 39, 42, 0.35)'; // zinc-800
+      // 1. Subtle, clean structural grid
+      ctx.strokeStyle = 'rgba(39, 39, 42, 0.30)'; // zinc-800
       ctx.lineWidth = 1;
       const gridSize = 48;
       for (let x = -200; x < canvas.width * 1.6; x += gridSize) {
@@ -595,19 +384,19 @@ export default function NetworkGraphView({
       ctx.font = '600 10px "JetBrains Mono", monospace';
       ctx.fillStyle = '#71717a';
       ctx.textAlign = 'left';
-      ctx.fillText('ZONE A  ·  AIR-GAPPED IN-ZONE', 140, 42);
+      ctx.fillText('ZONE A  ·  AIR-GAPPED IN-ZONE (SCADA)', 140, 42);
 
       ctx.textAlign = 'right';
-      ctx.fillText('ZONE B  ·  PASSIVE MONITOR ENCLAVE', 940, 42);
+      ctx.fillText('ZONE B  ·  AIR-GAPPED SCANNER SOC', 940, 42);
 
       ctx.textAlign = 'center';
       ctx.fillStyle = '#a1a1aa';
       ctx.fillText('OPTICAL AIR GAP', 540, 42);
       ctx.font = '9px "JetBrains Mono", monospace';
       ctx.fillStyle = '#52525b';
-      ctx.fillText('HARDWARE SIMPLEX DIODE', 540, 56);
+      ctx.fillText('PHYSICAL SIMPLEX DIODE', 540, 56);
 
-      // 3. Draw Edges (Physical fiber/copper links)
+      // 3. Draw Edges between Active Connected Nodes
       edges.forEach((edge) => {
         const source = nodes.find(n => n.id === edge.from);
         const target = nodes.find(n => n.id === edge.to);
@@ -623,16 +412,16 @@ export default function NetworkGraphView({
 
         if (edge.isDiodeBridge) {
           // Hardware Diode Simplex Link: distinct dashed path indicating galvanic gap
-          ctx.setLineDash([5, 3]);
+          ctx.setLineDash([6, 3]);
           ctx.strokeStyle = isThreatLine ? '#f43f5e' : '#38bdf8';
           ctx.lineWidth = 1.5;
         } else if (isThreatLine) {
           ctx.setLineDash([]);
-          ctx.strokeStyle = 'rgba(244, 63, 94, 0.4)';
+          ctx.strokeStyle = 'rgba(244, 63, 94, 0.45)';
           ctx.lineWidth = 1.2;
         } else {
           ctx.setLineDash([]);
-          ctx.strokeStyle = 'rgba(39, 39, 42, 0.7)';
+          ctx.strokeStyle = 'rgba(39, 39, 42, 0.75)';
           ctx.lineWidth = 1.0;
         }
         ctx.stroke();
@@ -643,13 +432,8 @@ export default function NetworkGraphView({
       const particles = activeParticlesRef.current;
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
-        const edge = edges[p.edgeIndex];
-        if (!edge) {
-          particles.splice(i, 1);
-          continue;
-        }
-        const source = nodes.find(n => n.id === edge.from);
-        const target = nodes.find(n => n.id === edge.to);
+        const source = nodes.find(n => n.id === p.from);
+        const target = nodes.find(n => n.id === p.to);
         if (!source || !target) {
           particles.splice(i, 1);
           continue;
@@ -659,12 +443,11 @@ export default function NetworkGraphView({
         const dy = target.y - source.y;
         const edgeDist = Math.hypot(dx, dy) || 1;
 
-        // Physical velocity: advances toward target and vanishes upon arrival
-        const pxPerFrame = 1.35 * (p.speedMultiplier || 1.0);
+        // Physical velocity
+        const pxPerFrame = 1.45 * (p.speedMultiplier || 1.0);
         p.progress += pxPerFrame / edgeDist;
 
         if (p.progress >= 1.0) {
-          // Packet reached destination system! Removed from transit.
           particles.splice(i, 1);
           continue;
         }
@@ -675,7 +458,7 @@ export default function NetworkGraphView({
           ? '56, 189, 248' 
           : '148, 163, 184';
 
-        // Packet Head (crisp, zero blur)
+        // Packet Head
         const px0 = source.x + dx * p.progress;
         const py0 = source.y + dy * p.progress;
         ctx.beginPath();
@@ -683,8 +466,8 @@ export default function NetworkGraphView({
         ctx.fillStyle = `rgba(${rgb}, 0.95)`;
         ctx.fill();
 
-        // Trail Step 1 (5px behind)
-        const p1 = p.progress - (5 / edgeDist);
+        // Trail Step 1
+        const p1 = p.progress - (6 / edgeDist);
         if (p1 >= 0) {
           const px1 = source.x + dx * p1;
           const py1 = source.y + dy * p1;
@@ -694,8 +477,8 @@ export default function NetworkGraphView({
           ctx.fill();
         }
 
-        // Trail Step 2 (10px behind)
-        const p2 = p.progress - (10 / edgeDist);
+        // Trail Step 2
+        const p2 = p.progress - (12 / edgeDist);
         if (p2 >= 0) {
           const px2 = source.x + dx * p2;
           const py2 = source.y + dy * p2;
@@ -706,13 +489,13 @@ export default function NetworkGraphView({
         }
       }
 
-      // 5. Draw Nodes (Minimalist Matte Surface with Status Pip)
+      // 5. Draw Connected Nodes
       nodes.forEach((node) => {
         const status = getMalwareStatus(node.id);
         const isHovered = hoveredNode?.id === node.id;
         const isSelected = selectedNode?.id === node.id;
 
-        // Subtle hover / selected ring (1px hairline)
+        // Subtle hover / selected ring
         if (isSelected || isHovered) {
           ctx.beginPath();
           ctx.arc(node.x, node.y, node.radius + 4, 0, Math.PI * 2);
@@ -721,7 +504,7 @@ export default function NetworkGraphView({
           ctx.stroke();
         }
 
-        // Main Node Body (Matte Dark Zinc)
+        // Main Node Body
         ctx.beginPath();
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
         ctx.fillStyle = node.zone === 'barrier' ? '#18181b' : '#111318';
@@ -738,7 +521,7 @@ export default function NetworkGraphView({
         ctx.lineWidth = 1.0;
         ctx.stroke();
 
-        // Minimalist Status Pip (Dieter Rams discrete indicator)
+        // Minimalist Status Pip
         const pipColor = (status.isInfected || status.isTriggered)
           ? '#f43f5e'
           : status.isTransitThreat
@@ -768,6 +551,15 @@ export default function NetworkGraphView({
         ctx.font = '10px "JetBrains Mono", monospace';
         ctx.fillStyle = '#71717a';
         ctx.fillText(node.ip, node.x, node.y + node.radius + 26);
+
+        // Live SCADA telemetry badge if nuclear node
+        if (node.id === 'nuclear-scada') {
+          ctx.font = '9px "JetBrains Mono", monospace';
+          ctx.fillStyle = node.state === 'LOSS_OF_FLOW' ? '#f43f5e' : '#38bdf8';
+          const p = node.p_bar ? `${node.p_bar}b` : '155.5b';
+          const f = node.flow_kgs ? `${Math.round(node.flow_kgs)}kg/s` : '16516kg/s';
+          ctx.fillText(`[${p} | ${f}]`, node.x, node.y + node.radius + 37);
+        }
       });
 
       ctx.restore();
@@ -780,40 +572,14 @@ export default function NetworkGraphView({
     return () => {
       window.removeEventListener('resize', resize);
       if (resizeObserver) resizeObserver.disconnect();
-      if (simTimer) clearInterval(simTimer);
       cancelAnimationFrame(animationId);
     };
-  }, [nodes, edges, currentScenario, hoveredNode, selectedNode, transform, isStreaming]);
-
-  // Trigger particle animation when a live real packet event is received
-  useEffect(() => {
-    if (!packetEvent) return;
-    lastPacketRef.current = packetEvent;
-    const fromId = packetEvent.from;
-    const toId = packetEvent.to;
-    const isThreat = !!packetEvent.threat;
-    const isDiodeBridge = !!packetEvent.is_diode_bridge;
-    const isAlert = !!packetEvent.is_alert;
-    const size = packetEvent.size || 64;
-
-    const edgeIdx = edges.findIndex(e => e.from === fromId && e.to === toId);
-    if (edgeIdx !== -1) {
-      activeParticlesRef.current.push({
-        edgeIndex: edgeIdx,
-        progress: 0.0,
-        speedMultiplier: isThreat ? 1.6 : (isDiodeBridge ? 1.35 : 1.1),
-        isThreat: isThreat,
-        isDiodeBridge: isDiodeBridge || edges[edgeIdx].isDiodeBridge,
-        isAlert: isAlert,
-        size: Math.max(1.8, Math.min(3.2, Math.log2(size) * 0.35)),
-      });
-      setInFlightCount(activeParticlesRef.current.length);
-    }
-  }, [packetEvent, edges]);
+  }, [nodes, edges, currentScenario, hoveredNode, selectedNode, transform]);
 
   // Convert mouse event coordinates to graph world space
   const getWorldCoord = (e) => {
     const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
@@ -827,18 +593,16 @@ export default function NetworkGraphView({
 
   const handleMouseDown = (e) => {
     const { x, y } = getWorldCoord(e);
-    // Check if clicking a node to drag
     const clicked = nodes.find(n => {
       const dx = n.x - x;
       const dy = n.y - y;
-      return Math.sqrt(dx * dx + dy * dy) <= n.radius + 4;
+      return Math.sqrt(dx * dx + dy * dy) <= n.radius + 6;
     });
 
     if (clicked) {
       setDraggedNode(clicked);
       setSelectedNode(clicked);
     } else {
-      // Pan canvas
       isPanningRef.current = true;
       panStartRef.current = { x: e.clientX - transform.x, y: e.clientY - transform.y };
     }
@@ -861,7 +625,6 @@ export default function NetworkGraphView({
       return;
     }
 
-    // Check hover
     const hit = nodes.find(n => {
       const dx = n.x - x;
       const dy = n.y - y;
@@ -875,7 +638,6 @@ export default function NetworkGraphView({
     isPanningRef.current = false;
   };
 
-  // Zoom with scroll wheel
   const handleWheel = (e) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
@@ -898,10 +660,10 @@ export default function NetworkGraphView({
           </div>
           <div>
             <h3 className="text-xs font-semibold text-zinc-200 tracking-wider uppercase font-mono">
-              Hardware Diode Topology // Passive Tap Architecture
+              Live Connected Topology // Real Optical Diode Mesh
             </h3>
             <p className="text-[11px] text-zinc-400">
-              Unidirectional physical barrier · Simplex laser tap · Continuous latent observation
+              Only active transmitting systems rendered · Zero simulated fake packets · Optical air-gap ingress
             </p>
           </div>
         </div>
@@ -940,7 +702,7 @@ export default function NetworkGraphView({
             <span className={`w-2 h-2 rounded-full ${
               currentScenario !== 'calm' ? 'bg-rose-500' : 'bg-emerald-500'
             }`} />
-            <span>{currentScenario !== 'calm' ? 'ANOMALY DETECTED' : 'NORMAL ENCLAVE OPERATION'}</span>
+            <span>{currentScenario !== 'calm' ? 'ANOMALY DETECTED' : 'REAL NETWORK INGESTION ACTIVE'}</span>
           </div>
         </div>
       </div>
@@ -984,13 +746,13 @@ export default function NetworkGraphView({
             <div className="text-[11px] text-zinc-400 mb-1">
               Status: <span style={{ color: hoveredNodeStatus?.color || '#10b981' }}>{hoveredNodeStatus?.name}</span>
             </div>
-            {hoveredNodeStatus?.isInfected && (
-              <div className="p-1.5 bg-rose-950/40 border border-rose-800/40 rounded text-rose-300 text-[10px] mt-1.5">
-                {hoveredNodeStatus.description}
+            {hoveredNode.id === 'nuclear-scada' && (
+              <div className="p-1.5 bg-zinc-950 border border-zinc-800 rounded text-sky-300 text-[10px] mt-1.5">
+                P: {hoveredNode.p_bar || 155.5} bar · Flow: {Math.round(hoveredNode.flow_kgs || 16516)} kg/s
               </div>
             )}
             <div className="text-[10px] text-zinc-400 mt-2 text-right">
-              Click node for forensic trace
+              Click node for live parameters
             </div>
           </div>
         )}
@@ -998,25 +760,21 @@ export default function NetworkGraphView({
         {/* Legend Overlay at Bottom-Left */}
         <div className="absolute bottom-4 left-4 z-20 p-2.5 rounded-lg bg-zinc-950/90 border border-zinc-800 font-mono text-[11px] space-y-1.5 shadow-md">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span className="text-zinc-400">Normal Monitored Node</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="text-zinc-400">Nominal Telemetry Flow</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-            <span className="text-rose-400">Compromised Node</span>
+            <span className="w-2 h-2 rounded-full bg-rose-500" />
+            <span className="text-zinc-400">Cyber Threat / Anomaly</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-            <span className="text-amber-400">Anomalous Transit / Gateway</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-sky-400"></span>
-            <span className="text-zinc-400">Simplex Diode Bridge Flow</span>
+            <span className="w-2 h-2 rounded-full bg-sky-400" />
+            <span className="text-zinc-400">Simplex Optical Photons</span>
           </div>
         </div>
       </div>
 
-      {/* Detailed Node Inspection Drawer (On Node Click) */}
+      {/* Forensic / Node Inspector Modal */}
       {selectedNode && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl max-w-2xl w-full p-5 shadow-2xl relative font-mono text-xs">
@@ -1073,56 +831,54 @@ export default function NetworkGraphView({
               </p>
             </div>
 
+            {/* Nuclear SCADA Physical Parameters if Nuclear Node */}
+            {selectedNode.id === 'nuclear-scada' && (
+              <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg mb-3">
+                <span className="text-[10px] text-zinc-400 font-medium block mb-2 uppercase tracking-wider">
+                  Kudankulam Unit 1 PWR Physical Telemetry (NPPAD Benchmark)
+                </span>
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
+                    <span className="text-[10px] text-zinc-500 block">PRESSURE</span>
+                    <span className="text-xs font-bold text-sky-400">{selectedNode.p_bar || 155.5} bar</span>
+                  </div>
+                  <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
+                    <span className="text-[10px] text-zinc-500 block">CORE TEMP</span>
+                    <span className="text-xs font-bold text-emerald-400">{selectedNode.tavg_c || 310.0} °C</span>
+                  </div>
+                  <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
+                    <span className="text-[10px] text-zinc-500 block">COOLANT FLOW</span>
+                    <span className={`text-xs font-bold ${selectedNode.state === 'LOSS_OF_FLOW' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      {Math.round(selectedNode.flow_kgs || 16516)} kg/s
+                    </span>
+                  </div>
+                  <div className="p-2 bg-zinc-900 rounded border border-zinc-800">
+                    <span className="text-[10px] text-zinc-500 block">ELECTRICAL</span>
+                    <span className="text-xs font-bold text-amber-400">{selectedNode.mw || 955.3} MWe</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Diagnostic Metrics Grid */}
             <div className="grid grid-cols-3 gap-2.5 mb-3">
               <div className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800">
-                <span className="text-zinc-400 text-[10px] block">TRAFFIC RATE</span>
+                <span className="text-zinc-400 text-[10px] block">CONNECTION TYPE</span>
                 <div className="text-xs font-semibold text-zinc-200 mt-1">
-                  {activeNodeStatus?.rate || selectedNode.normalRate}
+                  {selectedNode.zone === 'barrier' ? 'Optical Air-Gap' : (selectedNode.zone === 'in-zone' ? 'Protected LAN' : 'Air-Gapped SOC')}
                 </div>
               </div>
               <div className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800">
-                <span className="text-zinc-400 text-[10px] block">ATTRIBUTION CHANNEL</span>
-                <div className="text-xs font-semibold text-amber-400 mt-1">
-                  {activeNodeStatus?.dominantChannel || 'None (Benign)'}
-                </div>
-              </div>
-              <div className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800">
-                <span className="text-zinc-400 text-[10px] block">ANOMALY SCORE (PEAK)</span>
+                <span className="text-zinc-400 text-[10px] block">EGRESS CHANNEL</span>
                 <div className="text-xs font-semibold text-sky-400 mt-1">
-                  {activeNodeStatus?.peakScore || score.toFixed(2)} / τ = {tau.toFixed(2)}
+                  {selectedNode.zone.startsWith('diode') || selectedNode.zone === 'barrier' ? 'Optical Photons' : 'Simplex UDP 9999'}
                 </div>
               </div>
-            </div>
-
-            {/* Live Packet Tail for this Node */}
-            <div>
-              <span className="text-zinc-400 text-[11px] font-medium mb-1.5 block">
-                RECENT OBSERVED TELEMETRY FRAMES
-              </span>
-              <div className="p-2.5 bg-zinc-950 rounded-lg border border-zinc-800 text-[11px] text-zinc-300 space-y-1 max-h-36 overflow-y-auto">
-                <div className="text-zinc-400 text-[10px] border-b border-zinc-850 pb-1">
-                  TIMESTAMP | SRC → DST | PROTOCOL | PAYLOAD | ENTROPY | STATUS
+              <div className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800">
+                <span className="text-zinc-400 text-[10px] block">AI ANOMALY SCORE</span>
+                <div className="text-xs font-semibold text-emerald-400 mt-1">
+                  S_peak: {score.toFixed(2)} / τ: {tau.toFixed(2)}
                 </div>
-                {activeNodeStatus?.traces && activeNodeStatus.traces.length > 0 ? (
-                  activeNodeStatus.traces.map((traceLine, tIdx) => (
-                    <div 
-                      key={tIdx} 
-                      className="px-1 py-0.5 rounded text-rose-300 bg-rose-950/20 font-mono"
-                    >
-                      {traceLine}
-                    </div>
-                  ))
-                ) : (
-                  <>
-                    <div className="text-zinc-400">
-                      T-0.4s &nbsp;| {selectedNode.ip}:4840 → 10.0.1.1:9999 | UDP | 120 B | H=3.42 bits | BENIGN_MANIFOLD
-                    </div>
-                    <div className="text-zinc-400">
-                      T-0.1s &nbsp;| {selectedNode.ip}:4840 → 10.0.1.1:9999 | UDP | 96 B  | H=3.38 bits | BENIGN_MANIFOLD
-                    </div>
-                  </>
-                )}
               </div>
             </div>
 

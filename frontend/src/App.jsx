@@ -36,7 +36,7 @@ export default function App() {
   // 8 Dedicated Tabs: 'topology' (Home) | 'telemetry' | 'detection' | 'attribution' | 'alerts' | 'diode' | 'campaign' | 'theory'
   const [activeTab, setActiveTab] = useState('topology');
   const [showPhoneScanner, setShowPhoneScanner] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(true);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [speed, setSpeed] = useState(1.0);
   const [currentScenario, setCurrentScenario] = useState('calm');
 
@@ -49,7 +49,7 @@ export default function App() {
       }
     }
   }, []);
-  const [autoTour, setAutoTour] = useState(true);
+  const [autoTour, setAutoTour] = useState(false);
   const [autoTourPhase, setAutoTourPhase] = useState({
     name: 'Phase 1/6: Calm Baseline (FPR 0.0%)',
     remaining: 8,
@@ -111,6 +111,39 @@ export default function App() {
           const data = JSON.parse(event.data);
           if (data.type === 'packet_transit') {
             setRealPacketEvent(data);
+            if (data.scada) {
+              const sc = data.scada;
+              const telemPoint = {
+                time: data.timestamp || (Date.now() / 1000),
+                iat: (data.feat && data.feat[0]) || 0.1,
+                bytes: (data.feat && data.feat[1]) || data.size || 128,
+                entropy: (data.feat && data.feat[2]) || (sc.p ? (sc.p / 45.0) : 3.5),
+                burst: (data.feat && data.feat[3]) || (sc.flow ? (sc.flow / 16000.0) : 1.0),
+              };
+              setCurrentTelemetry(telemPoint);
+              setTelemetryHistory(prev => [...prev.slice(-60), telemPoint]);
+            } else if (data.feat && Array.isArray(data.feat)) {
+              const telemPoint = {
+                time: data.timestamp || (Date.now() / 1000),
+                iat: Number(data.feat[0]) || 0.1,
+                bytes: Number(data.feat[1]) || data.size || 128,
+                entropy: Number(data.feat[2]) || 3.5,
+                burst: Number(data.feat[3]) || 1.0,
+              };
+              setCurrentTelemetry(telemPoint);
+              setTelemetryHistory(prev => [...prev.slice(-60), telemPoint]);
+            }
+          } else if (data.type === 'nuclear_telemetry' && data.telemetry) {
+            const nt = data.telemetry;
+            const telemPoint = {
+              time: data.timestamp || (Date.now() / 1000),
+              iat: 0.1,
+              bytes: nt.pressure_bar ? Math.round(nt.pressure_bar * 4) : 128,
+              entropy: nt.core_temp_c ? (nt.core_temp_c / 100.0) : 3.1,
+              burst: nt.coolant_flow_kgs ? (nt.coolant_flow_kgs / 16500.0) : 1.0,
+            };
+            setCurrentTelemetry(telemPoint);
+            setTelemetryHistory(prev => [...prev.slice(-60), telemPoint]);
           } else if (data.type === 'scenario_change') {
             if (data.scenario) setCurrentScenario(data.scenario);
             if (data.speed) setSpeed(data.speed);
@@ -685,6 +718,7 @@ export default function App() {
           <div className="h-full flex flex-col min-h-0 space-y-2">
             <div className="flex-1 min-h-0 w-full">
               <HardwareDiodeTopology
+                packetEvent={realPacketEvent}
                 isStreaming={isStreaming}
                 isAttacking={currentScenario !== 'calm'}
                 packetRate={currentScenario === 'exfil_burst' ? 66 : 12}
