@@ -202,13 +202,13 @@ class RealPacketMesh:
 
         self.tx_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    def generate_qr_code_frame(self, data_str: str, size: Tuple[int, int] = (360, 360), label_info: str = "") -> np.ndarray:
-        """Encodes structured telemetry into a high-density 2D QR matrix."""
+    def generate_qr_code_frame(self, data_str: str, size: Tuple[int, int] = (500, 500), label_info: str = "") -> np.ndarray:
+        """Encodes structured telemetry into a high-density 2D QR matrix optimized for phone cameras."""
         qr = qrcode.QRCode(
             version=None,
             error_correction=qrcode.constants.ERROR_CORRECT_M,
-            box_size=5,
-            border=2,
+            box_size=10,
+            border=4,
         )
         qr.add_data(data_str)
         qr.make(fit=True)
@@ -271,13 +271,15 @@ class RealPacketMesh:
             "hash": hashlib.md5(raw_pkt.payload or b"").hexdigest()[:8]
         }
         if scada_meta:
-            optical_payload["p"] = scada_meta.get("p", 155.5)
-            optical_payload["tavg"] = scada_meta.get("tavg", 310.0)
-            optical_payload["flow"] = scada_meta.get("flow", 16515.8)
-            optical_payload["mw"] = scada_meta.get("mw", 955.0)
+            optical_payload["p"] = round(float(scada_meta.get("p", 155.5)), 1)
+            optical_payload["tavg"] = round(float(scada_meta.get("tavg", 310.0)), 1)
+            optical_payload["flow"] = round(float(scada_meta.get("flow", 16515.8)), 1)
+            optical_payload["mw"] = round(float(scada_meta.get("mw", 955.0)), 1)
+            optical_payload["cpu"] = round(float(scada_meta.get("cpu", 1.2)), 1)
+            optical_payload["ram"] = round(float(scada_meta.get("ram", 2.8)), 1)
             optical_payload["state"] = scada_meta.get("state", "NOMINAL_FULL_POWER")
 
-        encoded_str = json.dumps(optical_payload)
+        encoded_str = json.dumps(optical_payload, separators=(',', ':'))
         self.seq_id += 1
 
         # Generate optical QR image
@@ -428,6 +430,8 @@ def run_packet_mesh(
         "tavg": 310.0,
         "flow": 16515.8,
         "mw": 955.0,
+        "cpu": 1.2,
+        "ram": 2.8,
         "state": "NOMINAL_FULL_POWER",
         "online": False
     }
@@ -440,11 +444,13 @@ def run_packet_mesh(
             req = urllib.request.Request(url, headers={"User-Agent": "ChronosRealPacket/1.0"})
             with urllib.request.urlopen(req, timeout=0.4) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                scada_vitals["p"] = round(float(data.get("pressure_bar", 155.5)), 1)
-                scada_vitals["tavg"] = round(float(data.get("core_temp_c", 310.0)), 1)
-                scada_vitals["flow"] = round(float(data.get("coolant_flow_kgs", 16515.8)), 0)
-                scada_vitals["mw"] = round(float(data.get("output_mwe", 955.0)), 1)
-                scada_vitals["state"] = data.get("reactor_state", "NOMINAL_FULL_POWER")
+                scada_vitals["p"] = round(float(data.get("pressure_bar", data.get("p", 155.5))), 1)
+                scada_vitals["tavg"] = round(float(data.get("core_temp_c", data.get("tavg", 310.0))), 1)
+                scada_vitals["flow"] = round(float(data.get("coolant_flow_kgs", data.get("flow", 16515.8))), 1)
+                scada_vitals["mw"] = round(float(data.get("output_mwe", data.get("mw", 955.0))), 1)
+                scada_vitals["cpu"] = round(float(data.get("container_cpu_pct", data.get("cpu", 1.2))), 1)
+                scada_vitals["ram"] = round(float(data.get("container_mem_pct", data.get("ram", 2.8))), 1)
+                scada_vitals["state"] = data.get("reactor_state", data.get("state", "NOMINAL_FULL_POWER"))
                 scada_vitals["online"] = True
         except Exception:
             scada_vitals["online"] = False
@@ -602,18 +608,41 @@ def run_packet_mesh(
 
             # GUI optical display update
             if not headless and mesh.last_qr_frame is not None:
-                display_frame = cv2.copyMakeBorder(mesh.last_qr_frame, 55, 45, 20, 20, cv2.BORDER_CONSTANT, value=(20, 20, 30))
-                cv2.rectangle(display_frame, (0, 0), (display_frame.shape[1], 50), (15, 15, 22), -1)
-                cv2.putText(display_frame, "CHRONOS: OPTICAL DATA DIODE TRANSMITTER", (12, 22),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 240, 255), 1)
-                cv2.putText(display_frame, "POINT PHONE CAMERA HERE TO SCAN AIR GAP", (12, 40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 255, 180), 1)
-                node1_label = f"Kudankulam PWR: P={scada_vitals['p']:.1f}bar | Tavg={scada_vitals['tavg']:.1f}C | Flow={scada_vitals['flow']:.0f}kg/s" if scada_vitals["online"] else f"Scenario: {scenario.upper()}"
-                cv2.putText(display_frame, f"Frame #{total_packets} | {node1_label}", (12, display_frame.shape[0] - 25),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.36, (0, 255, 180) if scada_vitals["online"] else (180, 180, 180), 1)
-                cv2.putText(display_frame, f"Power: {scada_vitals['mw']} MWe | State: {scada_vitals['state']} | Air-Gap: PHYSICAL SIMPLEX EGRESS", (12, display_frame.shape[0] - 8),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.33, (0, 240, 255), 1)
-                cv2.imshow("CHRONOS Real Packet Optical Emitter", display_frame)
+                h, w = 720, 720
+                canvas = np.zeros((h, w, 3), dtype=np.uint8)
+
+                # Top Header Banner
+                cv2.rectangle(canvas, (0, 0), (w, 55), (25, 25, 40), -1)
+                cv2.putText(canvas, "CHRONOS: OPTICAL DATA DIODE TRANSMITTER", (25, 36),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.68, (0, 240, 255), 2)
+
+                # Center High-Contrast QR frame (500x500) with clean margins
+                canvas[65:565, 110:610] = mesh.last_qr_frame
+
+                # Bottom Telemetry Strip
+                cv2.rectangle(canvas, (0, 575), (w, h), (18, 18, 28), -1)
+                cv2.line(canvas, (0, 575), (w, 575), (50, 50, 70), 1)
+
+                p_val = scada_vitals.get("p", 155.5)
+                t_val = scada_vitals.get("tavg", 310.0)
+                flow_val = scada_vitals.get("flow", 16515.8)
+                mw_val = scada_vitals.get("mw", 955.0)
+                state_val = scada_vitals.get("state", "NOMINAL_FULL_POWER")
+                cpu_val = scada_vitals.get("cpu", 1.2)
+                ram_val = scada_vitals.get("ram", 2.8)
+
+                node1_label = f"Kudankulam PWR: P={p_val:.1f}bar | Tavg={t_val:.1f}C | Flow={flow_val:.1f}kg/s" if scada_vitals.get("online") else f"Scenario: {scenario.upper()}"
+                cv2.putText(canvas, f"Frame #{total_packets:04d} | {node1_label}", (25, 605),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 255, 180) if scada_vitals.get("online") else (180, 180, 180), 1)
+                
+                status_color = (0, 0, 255) if state_val not in ("NOMINAL", "NOMINAL_FULL_POWER") else (0, 255, 120)
+                cv2.putText(canvas, f"State: {state_val} | CPU: {cpu_val:.1f}% | RAM: {ram_val:.1f}% | Output: {mw_val:.1f} MWe", (25, 638),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.46, status_color, 1)
+
+                cv2.putText(canvas, "POINT PHONE CAMERA HERE TO SCAN AIR GAP (ZERO PHYSICAL RETURN PATH)", (25, 672),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 240, 255), 1)
+
+                cv2.imshow("CHRONOS Real Packet Optical Emitter", canvas)
                 if cv2.waitKey(10) & 0xFF == ord('q'):
                     break
 

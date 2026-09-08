@@ -46,7 +46,7 @@ def test_real_packet_mesh_route_scada_packet():
     # Verify optical QR frame was created and is a valid image matrix
     assert mesh.last_qr_frame is not None
     assert isinstance(mesh.last_qr_frame, np.ndarray)
-    assert mesh.last_qr_frame.shape == (360, 360, 3)
+    assert mesh.last_qr_frame.shape == (500, 500, 3)
 
     mesh.close()
 

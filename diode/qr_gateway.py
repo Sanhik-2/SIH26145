@@ -20,9 +20,12 @@ import argparse
 import threading
 import urllib.request
 import urllib.error
+from pathlib import Path
 import numpy as np
 import cv2
 import qrcode
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 if sys.platform == "win32":
     try:
@@ -87,14 +90,20 @@ class DashboardNotifier:
     def close(self):
         self.running = False
 
-def poll_scada_container():
+def poll_scada_container(custom_host=None):
     """Polls the containerized SCADA node for live NPPAD telemetry across candidate endpoints."""
-    candidate_urls = [
+    candidate_urls = []
+    if custom_host:
+        h = str(custom_host).strip()
+        if not h.startswith("http"):
+            h = f"http://{h}:8080"
+        candidate_urls.append(h)
+    candidate_urls.extend([
         SCADA_HMI_URL,
         "http://localhost:8080",
         "http://127.0.0.1:8080",
         "http://host.docker.internal:8080",
-    ]
+    ])
     for url in candidate_urls:
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "ChronosDiodeGateway/1.0"})
@@ -176,12 +185,23 @@ def generate_qr_matrix(data_str, size=(500, 500)):
 
 def main():
     parser = argparse.ArgumentParser(description="CHRONOS Nuclear Optical Data Diode QR Gateway")
+    parser.add_argument("host_pos", nargs="?", default="", help="Optional SCADA host IP (e.g. 10.1.72.254 or 192.168.137.1)")
+    parser.add_argument("--scada-host", "--host", default="", help="Node 1 Docker SCADA host IP (e.g. 10.1.72.254)")
+    parser.add_argument("--gui", action="store_true", help="Force display graphical QR diode window")
     parser.add_argument("--headless", action="store_true", help="Run without graphical display window")
     parser.add_argument("--fps", type=float, default=2.0, help="Optical frame rate (default: 2.0 fps)")
     parser.add_argument("--dashboard-url", default=DEFAULT_DASHBOARD_URL, help="SOC Dashboard URL for SSE sync")
     args = parser.parse_args()
 
-    headless = args.headless or not os.environ.get("DISPLAY")
+    target_host = args.scada_host or args.host_pos or ""
+    if target_host:
+        global SCADA_HMI_URL
+        if not target_host.startswith("http"):
+            SCADA_HMI_URL = f"http://{target_host}:8080"
+        else:
+            SCADA_HMI_URL = target_host
+
+    headless = args.headless or (sys.platform != "win32" and not os.environ.get("DISPLAY") and not args.gui)
     notifier = DashboardNotifier(base_url=args.dashboard_url)
 
     # Start packet ingestion thread
@@ -194,10 +214,10 @@ def main():
         except Exception:
             headless = True
 
-    run_transmitter_loop(mirror_sock, notifier, headless=headless, fps=args.fps)
+    run_transmitter_loop(mirror_sock, notifier, headless=headless, fps=args.fps, custom_host=target_host)
 
 
-def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
+def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0, custom_host=None):
     global sequence_id, total_received, total_bytes, is_alert_active
 
     # Load authentic NPPAD benchmark for dynamic standalone progression
@@ -220,7 +240,7 @@ def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
 
         if not batch:
             # Poll container directly for live NPPAD data from Docker
-            node_data = poll_scada_container()
+            node_data = poll_scada_container(custom_host=custom_host)
             if node_data:
                 now_str = time.strftime("%H:%M:%S")
                 state = node_data.get("reactor_state", "NOMINAL_FULL_POWER")
@@ -475,3 +495,8 @@ def run_transmitter_loop(mirror_sock, notifier, headless=False, fps=2.0):
         notifier.close()
     if not headless:
         cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
+
