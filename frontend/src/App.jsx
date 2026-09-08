@@ -556,15 +556,25 @@ export default function App() {
           <div className="h-full flex flex-col min-h-0 overflow-y-auto">
             <CallourDashboardView
               systemStatus={systemStatus}
+              currentTelemetry={currentTelemetry}
+              telemetryHistory={telemetryHistory}
               currentScore={currentScore}
+              scoreHistory={scoreHistory}
+              alerts={alerts}
+              attribution={attribution}
+              isConfirmedAlert={isConfirmedAlert}
+              realPacketEvent={realPacketEvent}
               currentScenario={currentScenario}
               onTriggerAttack={handleTriggerAttack}
-              packetEvent={realPacketEvent}
-              recentPackets={recentPackets}
-              alerts={alerts}
-              onOpenScanner={() => setShowPhoneScanner(true)}
-              onOpenUsbModal={() => setShowUsbModal(true)}
+              isStreaming={isStreaming}
+              onToggleStreaming={() => setIsStreaming(!isStreaming)}
+              onResetStream={handleResetStream}
+              speed={speed}
+              onChangeSpeed={setSpeed}
               usbStatus={usbStatus}
+              onOpenUsbModal={() => setShowUsbModal(true)}
+              onOpenScanner={() => setShowPhoneScanner(true)}
+              onSwitchTab={setActiveTab}
             />
           </div>
         )}
