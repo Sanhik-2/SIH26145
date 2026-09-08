@@ -40,7 +40,7 @@ def main():
         print_banner()
         print("Usage: python run.py <command> [options]\n")
         print("Commands:")
-        print("  soc              Launch modern React Full-Stack SOC Console (:8501, HTTPS, WebRTC)")
+        print("  soc              Launch modern React Full-Stack SOC Console (:8501 HTTP, :8443 WebRTC)")
         print("  qr               Launch Optical Data Diode QR Transmitter Gateway")
         print("  scan             Launch Optical QR Scanner Receiver & AI Core")
         print("  scada            Launch Nuclear SCADA Kudankulam Service (Modbus 502, HMI 8080)")

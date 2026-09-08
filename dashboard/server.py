@@ -27,19 +27,35 @@ from starlette.responses import JSONResponse, FileResponse, StreamingResponse
 from starlette.routing import Route, Mount
 from starlette.staticfiles import StaticFiles
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Ensure repository root is on sys.path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 DIST_DIR = REPO_ROOT / "frontend" / "dist"
-if not DIST_DIR.exists() and (REPO_ROOT / "frontend" / "package.json").exists():
+frontend_dir = REPO_ROOT / "frontend"
+if (frontend_dir / "package.json").exists() and (not (DIST_DIR / "index.html").exists() or not (frontend_dir / "node_modules").exists()):
     import subprocess
-    print("[i] Building React frontend distribution bundle...")
-    try:
-        subprocess.run(["npm", "run", "build"], cwd=str(REPO_ROOT / "frontend"), check=True)
-    except Exception as e:
-        print(f"[!] Warning: Frontend build failed: {e}")
+    is_win = sys.platform == "win32"
+    if not (frontend_dir / "node_modules").exists():
+        print("[i] Installing frontend dependencies (npm install)...")
+        try:
+            subprocess.run(["npm", "install"], cwd=str(frontend_dir), check=True, shell=is_win)
+        except Exception as e:
+            print(f"[!] Warning: npm install failed: {e}")
+    if not (DIST_DIR / "index.html").exists():
+        print("[i] Building React frontend distribution bundle (npm run build)...")
+        try:
+            subprocess.run(["npm", "run", "build"], cwd=str(frontend_dir), check=True, shell=is_win)
+        except Exception as e:
+            print(f"[!] Warning: Frontend build failed: {e}")
 
 ALERTS_PATHS = [
     REPO_ROOT / "results" / "demo_alerts.jsonl",
@@ -382,7 +398,16 @@ async def api_stream(request: Request) -> StreamingResponse:
     )
 
 
-async def serve_spa_index(request: Request) -> FileResponse:
+async def serve_spa_index(request: Request):
+    rel_path = request.path_params.get("path", "").lstrip("/")
+    if rel_path:
+        target_file = (DIST_DIR / rel_path).resolve()
+        try:
+            target_file.relative_to(DIST_DIR.resolve())
+            if target_file.is_file():
+                return FileResponse(target_file)
+        except (ValueError, RuntimeError):
+            pass
     index_file = DIST_DIR / "index.html"
     if index_file.exists():
         return FileResponse(index_file)
@@ -561,12 +586,10 @@ routes = [
     Route("/api/scada/reset", api_scada_reset, methods=["GET", "POST"]),
 ]
 
-# Mount static dist assets if directory exists
-if DIST_DIR.exists():
-    routes.append(Mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="assets"))
-    routes.append(Route("/{path:path}", serve_spa_index, methods=["GET"]))
-else:
-    routes.append(Route("/", serve_spa_index, methods=["GET"]))
+# Mount static dist assets and SPA fallback
+(DIST_DIR / "assets").mkdir(parents=True, exist_ok=True)
+routes.append(Mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="assets"))
+routes.append(Route("/{path:path}", serve_spa_index, methods=["GET"]))
 
 middleware = [
     Middleware(
@@ -614,16 +637,27 @@ def check_or_clear_port(port: int):
         pass
 
     try:
-        import subprocess
-        out = subprocess.check_output(["lsof", "-ti", f":{port}"], text=True).strip()
-        if out:
-            pids = out.split()
-            current_pid = str(os.getpid())
-            for pid in pids:
-                if pid != current_pid:
-                    print(f"[i] Freeing occupied port {port} from prior process (PID: {pid})...")
-                    subprocess.run(["kill", "-9", pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-            time.sleep(0.4)
+        current_pid = os.getpid()
+        if sys.platform == "win32":
+            import subprocess
+            out = subprocess.check_output(["netstat", "-ano"], text=True)
+            for line in out.splitlines():
+                if f":{port}" in line and "LISTENING" in line:
+                    parts = line.strip().split()
+                    pid = int(parts[-1])
+                    if pid != current_pid and pid > 0:
+                        print(f"[i] Freeing occupied port {port} from prior process (PID: {pid})...")
+                        subprocess.run(["taskkill", "/F", "/PID", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            time.sleep(0.5)
+        else:
+            import subprocess
+            out = subprocess.check_output(["lsof", "-ti", f":{port}"], text=True).strip()
+            if out:
+                for pid in out.split():
+                    if int(pid) != current_pid:
+                        print(f"[i] Freeing occupied port {port} from prior process (PID: {pid})...")
+                        subprocess.run(["kill", "-9", pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                time.sleep(0.4)
     except Exception:
         pass
 
@@ -650,19 +684,16 @@ def main():
     parser = argparse.ArgumentParser(description="CHRONOS React SOC Full-Stack Console Server")
     parser.add_argument("--host", default="0.0.0.0", help="Listen host (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8501, help="Listen port (default: 8501)")
-    parser.add_argument("--ssl", action="store_true", default=True, help="Enable HTTPS using SSL certificates for Mobile WebRTC (default: True)")
-    parser.add_argument("--no-ssl", dest="ssl", action="store_false", help="Disable HTTPS and run in plain HTTP mode")
-    parser.add_argument("--http", dest="ssl", action="store_false", help="Disable HTTPS and run in plain HTTP mode")
+    parser.add_argument("--ssl-port", type=int, default=8443, help="HTTPS SSL companion port for mobile WebRTC (default: 8443)")
+    parser.add_argument("--ssl", action="store_true", default=False, help="Force primary port to run HTTPS")
+    parser.add_argument("--no-ssl", dest="enable_ssl", action="store_false", help="Disable HTTPS companion completely")
+    parser.add_argument("--http", dest="enable_ssl", action="store_false", help="Disable HTTPS companion completely")
     parser.add_argument("--ssl-key", default="", help="Path to SSL private key")
     parser.add_argument("--ssl-cert", default="", help="Path to SSL certificate")
     parser.add_argument("--reload", action="store_true", help="Enable live code reload")
     args = parser.parse_args()
 
     check_or_clear_port(args.port)
-
-    ssl_keyfile = None
-    ssl_certfile = None
-    protocol = "http"
     lan_ip = get_primary_lan_ip()
 
     if args.ssl:
@@ -670,28 +701,75 @@ def main():
         k, c = ensure_ssl_certs(cert_dir, args.host)
         ssl_keyfile = args.ssl_key or k
         ssl_certfile = args.ssl_cert or c
-        protocol = "https"
 
-    print("=" * 72)
-    print("🛡️  CHRONOS CYBER-DEFENSE SOC FULL-STACK CONSOLE")
-    print("=" * 72)
-    print(f" Web Interface:     {protocol}://localhost:{args.port}")
-    print(f" Local LAN URL:     {protocol}://{lan_ip}:{args.port}")
-    print(f" 📱 PHONE 30 FPS:   {protocol}://{lan_ip}:{args.port}/?scan=1")
-    print(f" SSL Encryption:    {'ENABLED (Native 30 FPS Mobile WebRTC Camera)' if args.ssl else 'DISABLED (HTTP)'}")
-    print(f" Static Assets:     {DIST_DIR}")
-    print(" Press Ctrl+C to terminate.")
-    print("=" * 72)
+        print("=" * 72)
+        print("🛡️  CHRONOS CYBER-DEFENSE SOC FULL-STACK CONSOLE")
+        print("=" * 72)
+        print(f" Web Interface:     https://localhost:{args.port}")
+        print(f" Local LAN URL:     https://{lan_ip}:{args.port}")
+        print(f" 📱 PHONE 30 FPS:   https://{lan_ip}:{args.port}/?scan=1")
+        print(f" SSL Encryption:    PRIMARY PORT ENCRYPTED (HTTPS)")
+        print(f" Static Assets:     {DIST_DIR}")
+        print(" Press Ctrl+C to terminate.")
+        print("=" * 72)
 
-    uvicorn.run(
-        app,
-        host=args.host,
-        port=args.port,
-        ssl_keyfile=ssl_keyfile,
-        ssl_certfile=ssl_certfile,
-        log_level="info"
-    )
+        uvicorn.run(
+            app,
+            host=args.host,
+            port=args.port,
+            ssl_keyfile=ssl_keyfile,
+            ssl_certfile=ssl_certfile,
+            log_level="info"
+        )
+    else:
+        enable_companion = getattr(args, "enable_ssl", True)
+        ssl_keyfile = None
+        ssl_certfile = None
+        if enable_companion:
+            try:
+                cert_dir = REPO_ROOT / "certs"
+                k, c = ensure_ssl_certs(cert_dir, args.host)
+                ssl_keyfile = args.ssl_key or k
+                ssl_certfile = args.ssl_cert or c
+                check_or_clear_port(args.ssl_port)
+            except Exception:
+                enable_companion = False
+
+        print("=" * 72)
+        print("🛡️  CHRONOS CYBER-DEFENSE SOC FULL-STACK CONSOLE")
+        print("=" * 72)
+        print(f" Web Interface:     http://localhost:{args.port}")
+        print(f" Local LAN URL:     http://{lan_ip}:{args.port}")
+        if enable_companion:
+            print(f" 📱 PHONE 30 FPS:   https://{lan_ip}:{args.ssl_port}/?scan=1")
+            print(f" SSL Encryption:    COMPANION ACTIVE ON :{args.ssl_port} (Native Mobile WebRTC)")
+        else:
+            print(f" SSL Encryption:    DISABLED (HTTP Mode)")
+        print(f" Static Assets:     {DIST_DIR}")
+        print(" Press Ctrl+C to terminate.")
+        print("=" * 72)
+
+        if enable_companion:
+            async def run_dual_servers():
+                cfg_http = uvicorn.Config(app, host=args.host, port=args.port, log_level="info")
+                cfg_https = uvicorn.Config(app, host=args.host, port=args.ssl_port, ssl_keyfile=ssl_keyfile, ssl_certfile=ssl_certfile, log_level="warning")
+                srv_http = uvicorn.Server(cfg_http)
+                srv_https = uvicorn.Server(cfg_https)
+                await asyncio.gather(srv_http.serve(), srv_https.serve())
+
+            try:
+                asyncio.run(run_dual_servers())
+            except (KeyboardInterrupt, SystemExit):
+                pass
+        else:
+            uvicorn.run(
+                app,
+                host=args.host,
+                port=args.port,
+                log_level="info"
+            )
 
 
 if __name__ == "__main__":
     main()
+

@@ -35,7 +35,10 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
   // Switch to HTTPS for real-time 30 FPS video streaming
   const handleSwitchToHttps = () => {
     if (typeof window !== 'undefined') {
-      const targetUrl = `https://${window.location.host}${window.location.pathname}${window.location.search}`;
+      const hostname = window.location.hostname;
+      const port = window.location.port === '8501' ? '8443' : window.location.port;
+      const hostStr = port ? `${hostname}:${port}` : hostname;
+      const targetUrl = `https://${hostStr}${window.location.pathname}${window.location.search}`;
       window.location.href = targetUrl;
     }
   };
