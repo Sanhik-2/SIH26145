@@ -59,33 +59,34 @@ def main():
         print("  python run.py system2                                            # System 2: Display Optical QR Diode Stream")
         print("  python run.py system3 192.168.1.50                               # System 3: Stream SCADA logs to System 2")
         print("  python run.py system4 ddos 192.168.1.50                          # System 4: Launch DDoS attack targeting System 2")
+        print("  python run.py real-packet --gui --scada-host 192.168.137.1       # Real packet optical QR mesh with GUI")
         print("  python run.py test                                               # Run full pytest suite")
         sys.exit(0)
 
     cmd = sys.argv[1].lower()
     extra_args = sys.argv[2:]
 
-    if cmd in ("system1", "sys1", "soc", "react", "ui"):
+    if cmd in ("system1", "sys1", "system-1", "sys-1", "soc", "react", "ui"):
         # System 1: Starlette/Uvicorn fullstack server + continuous NJ-ODE AI
         server_script = REPO_ROOT / "dashboard" / "server.py"
         subprocess.run([sys.executable, str(server_script)] + extra_args)
 
-    elif cmd in ("system2", "sys2", "qr", "gateway", "transmitter"):
+    elif cmd in ("system2", "sys2", "system-2", "sys-2", "qr", "gateway", "transmitter"):
         # System 2: Optical QR generator gateway
         qr_script = REPO_ROOT / "diode" / "qr_gateway.py"
         subprocess.run([sys.executable, str(qr_script)] + extra_args)
 
-    elif cmd in ("system3", "sys3", "nuclear-node", "scada-node", "node"):
+    elif cmd in ("system3", "sys3", "system-3", "sys-3", "nuclear-node", "scada-node", "node"):
         # System 3: In-zone useful SCADA log & telemetry sender
         node_script = REPO_ROOT / "diode" / "nuclear_node.py"
         subprocess.run([sys.executable, str(node_script)] + extra_args)
 
-    elif cmd in ("system4", "sys4", "redteam", "attack", "offensive"):
+    elif cmd in ("system4", "sys4", "system-4", "sys-4", "redteam", "attack", "offensive"):
         # System 4: Attacking node targeting System 2
         red_script = REPO_ROOT / "diode" / "redteam_arch.py"
         subprocess.run([sys.executable, str(red_script)] + extra_args)
 
-    elif cmd in ("real-packet", "realpacket", "mesh", "automate"):
+    elif cmd in ("real-packet", "realpacket", "reak-packet", "reakpacket", "real_packet", "reak_packet", "real", "reak", "mesh", "automate", "packet", "packets"):
         mesh_script = REPO_ROOT / "diode" / "real_packet.py"
         subprocess.run([sys.executable, str(mesh_script)] + extra_args)
 
