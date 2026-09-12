@@ -97,8 +97,25 @@ class Windower:
 
     @torch.no_grad()
     def fit_standardizer(self, *streams):
-        """Fit on BENIGN data only (unsupervised — no labels to leak)."""
-        X = np.concatenate([s.F for s in streams if len(s)], axis=0)
+        """Fit on BENIGN data only (unsupervised — no labels to leak).
+        Fits directly on slotted observations produced by aggregate_slots to ensure
+        the standardized inputs to NJ-ODE have zero mean and unit variance across slots.
+        """
+        all_obs = []
+        for s in streams:
+            if len(s) == 0:
+                continue
+            t0 = float(s.t[0])
+            while t0 < s.t[-1]:
+                v, m = aggregate_slots(s.t, s.F, t0, self.window_s, self.K, self.dt, mean=None, std=None)
+                if m.any():
+                    all_obs.append(v[m])
+                t0 += self.window_s
+        if all_obs:
+            X = np.concatenate(all_obs, axis=0)
+        else:
+            X = np.concatenate([s.F for s in streams if len(s)], axis=0)
+
         self.mean_ = X.mean(0).astype(np.float32)
         self.std_ = np.maximum(X.std(0), 0.1).astype(np.float32)   # floor: no /1e-8 explosions
         self.model.x_mean.copy_(torch.tensor(self.mean_))

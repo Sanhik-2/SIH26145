@@ -14,6 +14,9 @@ class Packet:
     payload: bytes = b""
     direction: int = 0      # 0 = outbound, 1 = inbound
     flow_key: bytes = b""   # optional flow identifier (e.g. 5-tuple hash)
+    ja4: str = ""           # TLS 1.3 / QUIC metadata fingerprint
+    dns_query: str = ""     # DNS QNAME for DGA / tunnelling analysis
+    label: str = "BENIGN"   # Ground-truth label for evaluation & forensics
 
 
 @dataclass
@@ -31,6 +34,18 @@ def shannon_entropy(payload: bytes) -> float:
     counts = np.bincount(np.frombuffer(payload, dtype=np.uint8), minlength=256)
     p = counts[counts > 0] / len(payload)
     return float(-(p * np.log2(p)).sum())
+
+
+def dns_character_entropy(domain: str) -> float:
+    """Shannon entropy of character sequence in domain name (bits 0..5)."""
+    if not domain:
+        return 0.0
+    cleaned = domain.lower().replace(".", "")
+    if not cleaned:
+        return 0.0
+    chars, counts = np.unique(list(cleaned), return_counts=True)
+    probs = counts / len(cleaned)
+    return float(-(probs * np.log2(probs)).sum())
 
 
 def featurize(packets, sort=True) -> FeatureStream:

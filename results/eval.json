@@ -1,48 +1,48 @@
 {
-  "threshold": 2.4641265869140625,
-  "benign_fpr": 0.0,
-  "benign_peak_mean": 0.9142209887504578,
-  "benign_peak_p99": 2.1141445636749268,
+  "threshold": 51.63425064086914,
+  "benign_fpr": 0.02083333395421505,
+  "benign_peak_mean": 10.853144645690918,
+  "benign_peak_p99": 74.27052307128906,
   "c2_beacon": {
-    "detection_rate": 1.0,
-    "flagged_obs_rate": 0.5264187866927593,
-    "mean_peak_score": 25.070580434799194,
-    "attribution_accuracy": 0.9,
+    "detection_rate": 0.025,
+    "flagged_obs_rate": 0.0012254901960784314,
+    "mean_peak_score": 17.46696741580963,
+    "attribution_accuracy": 0.0,
     "expected_attribution": "c2_beacon/beacon/recon/tunnel/encrypted-c2"
   },
   "exfil_burst": {
     "detection_rate": 1.0,
-    "flagged_obs_rate": 1.0,
-    "mean_peak_score": 888.6897338867187,
+    "flagged_obs_rate": 0.8791843016544825,
+    "mean_peak_score": 949.2922470092774,
     "attribution_accuracy": 1.0,
     "expected_attribution": "exfil_burst/exfil-flood"
   },
   "dga_tunnel": {
-    "detection_rate": 1.0,
-    "flagged_obs_rate": 1.0,
-    "mean_peak_score": 75.06886758804322,
-    "attribution_accuracy": 0.95,
+    "detection_rate": 0.075,
+    "flagged_obs_rate": 0.0011411182959300114,
+    "mean_peak_score": 31.50988597869873,
+    "attribution_accuracy": 0.0,
     "expected_attribution": "dga_tunnel/tunnel/encrypted-c2"
   },
   "ddos_flood": {
     "detection_rate": 1.0,
-    "flagged_obs_rate": 0.99848828420257,
-    "mean_peak_score": 778.5593292236329,
+    "flagged_obs_rate": 1.0,
+    "mean_peak_score": 950.2565933227539,
     "attribution_accuracy": 1.0,
     "expected_attribution": "ddos_flood/volumetric-ddos/exfil-flood"
   },
   "tls_c2": {
-    "detection_rate": 1.0,
-    "flagged_obs_rate": 0.5286343612334802,
-    "mean_peak_score": 141.3086233139038,
-    "attribution_accuracy": 1.0,
+    "detection_rate": 0.675,
+    "flagged_obs_rate": 0.04746494066882417,
+    "mean_peak_score": 66.21714944839478,
+    "attribution_accuracy": 0.675,
     "expected_attribution": "tls_c2/c2_beacon/beacon/recon"
   },
   "portscan": {
-    "detection_rate": 1.0,
-    "flagged_obs_rate": 0.9954694185753838,
-    "mean_peak_score": 140.59048156738282,
-    "attribution_accuracy": 1.0,
+    "detection_rate": 0.6,
+    "flagged_obs_rate": 0.010858585858585859,
+    "mean_peak_score": 59.469530296325686,
+    "attribution_accuracy": 0.6,
     "expected_attribution": "portscan/beacon/recon/exfil-flood"
   }
 }

@@ -24,11 +24,16 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
   const lastDecodedRef = useRef({ time: 0, text: '', seq: null });
   const streamRef = useRef(null);
 
+  const [isLocalhost, setIsLocalhost] = useState(true);
+  const [phoneActionMsg, setPhoneActionMsg] = useState('');
+  const [phoneActionLoading, setPhoneActionLoading] = useState(false);
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const isHttp = window.location.protocol === 'http:';
-      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      if (isHttp && !isLocalhost) {
+      const local = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      setIsLocalhost(local);
+      if (isHttp && !local) {
         setIsInsecureHttp(true);
       }
     }
@@ -57,6 +62,40 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
     };
     detectCameras();
   }, []);
+
+  const handleLaunchOnPhone = async () => {
+    setPhoneActionLoading(true);
+    setPhoneActionMsg('');
+    try {
+      const res = await fetch('/api/phone/launch_scanner');
+      const data = await res.json();
+      setPhoneActionMsg(data.message || 'Launched scanner on phone browser via USB wire!');
+    } catch {
+      setPhoneActionMsg('USB Notice: Open http://localhost:8501/scan on phone Chrome.');
+    } finally {
+      setPhoneActionLoading(false);
+    }
+  };
+
+  const handleLaunchScrcpyCam = async () => {
+    setPhoneActionLoading(true);
+    setPhoneActionMsg('');
+    try {
+      const res = await fetch('/api/phone/launch_cam');
+      const data = await res.json();
+      setPhoneActionMsg(data.message || 'Started phone camera stream window!');
+    } catch {
+      setPhoneActionMsg('Run "scrcpy --video-source=camera" in terminal.');
+    } finally {
+      setPhoneActionLoading(false);
+    }
+  };
+
+  const handleSwitchToLocalhost = () => {
+    if (typeof window !== 'undefined') {
+      window.location.href = `http://localhost:8501${window.location.pathname}${window.location.search}`;
+    }
+  };
 
   // Switch to HTTPS for real-time 30 FPS video streaming
   const handleSwitchToHttps = () => {
@@ -518,34 +557,109 @@ export default function PhoneCameraScanner({ onClose, onPacketDecoded }) {
           {/* Live Video Viewport */}
           <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-zinc-800 flex items-center justify-center">
             {isInsecureHttp || errorMsg ? (
-              <div className="p-5 sm:p-8 text-center text-zinc-300 max-w-md space-y-3 font-mono text-xs">
-                <AlertCircle className="w-10 h-10 text-amber-400 mx-auto" />
-                <p className="text-zinc-100 font-bold text-sm">Mobile WebRTC Camera Security Notice</p>
-                <p className="text-zinc-400 text-[11px] leading-relaxed">
-                  Mobile browsers (Chrome / Safari) disable continuous 30 FPS video streaming over plain HTTP. To enable real-time camera streaming:
-                </p>
+              <div className="p-4 sm:p-6 text-center text-zinc-300 max-w-lg space-y-3 font-mono text-xs">
+                <AlertCircle className="w-8 h-8 text-amber-400 mx-auto" />
+                <p className="text-zinc-100 font-bold text-sm">Phone Camera Optical Ingestion</p>
+                
+                {errorMsg && (
+                  <p className="text-rose-400 text-[11px] bg-rose-950/40 p-2 rounded border border-rose-800/40">
+                    {errorMsg}
+                  </p>
+                )}
 
-                <div className="pt-2 space-y-2">
-                  <button
-                    onClick={handleSwitchToHttps}
-                    className="w-full py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold font-mono flex items-center justify-center gap-2 shadow-lg cursor-pointer transition-transform active:scale-95"
-                  >
-                    <Zap className="w-4 h-4" />
-                    <span>🔒 SWITCH TO HTTPS FOR LIVE 30 FPS VIDEO</span>
-                  </button>
-
-                  <div className="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 text-left text-[11px] text-zinc-400 space-y-1">
-                    <p className="text-zinc-200 font-semibold">Quick 2-Step Setup:</p>
-                    <p>1. Tap the button above to switch to HTTPS.</p>
-                    <p>2. If Chrome says <em className="text-amber-300">"Your connection isn't private"</em>, tap <strong>Advanced → Proceed</strong>.</p>
-                    <p>3. Allow camera permission. The 30 FPS live video scanner will begin immediately!</p>
+                <div className="text-zinc-400 text-[11px] leading-relaxed text-left bg-zinc-900/90 p-3 rounded-xl border border-zinc-800 space-y-2.5">
+                  <div className="text-zinc-200 font-bold flex items-center justify-between">
+                    <span>Select Optical Ingestion Method:</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-800">Physical Simplex</span>
                   </div>
 
+                  {/* Method 1: Scan directly with the connected phone */}
+                  <div className="p-2.5 rounded-lg bg-black/50 border border-sky-800/50 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-sky-300 flex items-center gap-1.5">
+                        📱 Method 1: Use Phone Camera (USB Wire)
+                      </span>
+                      <span className="text-[9px] text-emerald-400 font-bold">RECOMMENDED</span>
+                    </div>
+                    <p className="text-[10px] text-zinc-400">
+                      Runs the 30 FPS optical QR scanner inside Chrome on your Samsung phone over the USB cable (Zero Wi-Fi). Decoded telemetry is streamed straight to System 1.
+                    </p>
+                    <button
+                      onClick={handleLaunchOnPhone}
+                      disabled={phoneActionLoading}
+                      className="w-full py-2 px-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>{phoneActionLoading ? 'Sending Command to Phone...' : '🚀 Auto-Open Scanner on Phone Browser'}</span>
+                    </button>
+                    <p className="text-[9px] text-zinc-500 text-center">
+                      Or manually open <strong className="text-sky-300">http://localhost:8501/scan</strong> in your phone's browser.
+                    </p>
+                  </div>
+
+                  {/* Method 2: Mirror Phone Camera to Desktop Window (scrcpy) */}
+                  <div className="p-2.5 rounded-lg bg-black/50 border border-purple-800/50 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-purple-300 flex items-center gap-1.5">
+                        📷 Method 2: Mirror Phone Camera to Screen
+                      </span>
+                      <span className="text-[9px] text-purple-400 font-bold">FEDORA LINUX</span>
+                    </div>
+                    <p className="text-[10px] text-zinc-400">
+                      Opens a real-time, hardware-accelerated 30 FPS floating desktop window via scrcpy displaying the phone's camera.
+                    </p>
+                    <button
+                      onClick={handleLaunchScrcpyCam}
+                      disabled={phoneActionLoading}
+                      className="w-full py-1.5 px-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Launch Phone Camera Window (scrcpy)</span>
+                    </button>
+                  </div>
+
+                  {/* Method 3: Use Laptop Webcam on localhost */}
+                  {!isLocalhost && (
+                    <div className="p-2.5 rounded-lg bg-black/50 border border-emerald-800/50 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-emerald-300 flex items-center gap-1.5">
+                          💻 Method 3: Use Laptop Built-In Webcam
+                        </span>
+                        <span className="text-[9px] text-amber-400 font-bold">LOCALHOST ONLY</span>
+                      </div>
+                      <p className="text-[10px] text-zinc-400">
+                        Browsers block webcams on IP addresses. Switch from the IP to localhost to enable your laptop's camera.
+                      </p>
+                      <button
+                        onClick={handleSwitchToLocalhost}
+                        className="w-full py-1.5 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Switch to http://localhost:8501</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {phoneActionMsg && (
+                    <div className="p-2 rounded bg-emerald-950/60 border border-emerald-700 text-emerald-300 text-[11px] font-mono text-center">
+                      {phoneActionMsg}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
                   <button
                     onClick={startCamera}
-                    className="w-full py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono cursor-pointer"
+                    className="flex-1 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono cursor-pointer"
                   >
-                    Retry Camera Stream
+                    Retry Local Camera
+                  </button>
+                  <button
+                    onClick={handleSwitchToHttps}
+                    className="py-1.5 px-3 rounded-lg bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 text-zinc-400 text-xs font-mono cursor-pointer"
+                    title="Switch to HTTPS companion port :8443"
+                  >
+                    HTTPS Mode (:8443)
                   </button>
                 </div>
               </div>

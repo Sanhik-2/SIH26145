@@ -36,6 +36,15 @@ from simulation.attacks.portscan import portscan_stream
 from simulation.attacks.tls_c2 import tls_c2_stream
 from simulation.benign.telemetry import telemetry_stream
 from simulation.benign.web_sync import web_sync_stream
+from simulation.real_dataset_sim import (
+    real_benign_stream,
+    real_c2_beacon_stream,
+    real_ddos_stream,
+    real_dga_tunnel_stream,
+    real_exfil_stream,
+    real_portscan_stream,
+    real_tls_c2_stream,
+)
 
 def _peak_scores(s):
     """NaN-aware per-window peak score."""
@@ -67,11 +76,11 @@ def tensorset(win, *streams):
     return v_cat, m_cat, t_grid.expand(v_cat.shape[0], -1)
 
 
-def mixed_window_stream(win, benign_seed, attack_fn, attack_seed):
-    """Benign telemetry + attack packets sharing one 10 s span — what the tap would see."""
-    benign_tel = telemetry_stream(duration_s=WINDOW_S, seed=benign_seed)
+def mixed_window_stream(win, benign_seed, attack_fn, attack_seed, benign_fn=telemetry_stream):
+    """Benign background + attack packets sharing one 10 s span — what the tap would see."""
+    bg = benign_fn(duration_s=WINDOW_S, seed=benign_seed)
     attack = attack_fn(duration_s=WINDOW_S, seed=attack_seed)
-    packets = sorted(benign_tel + attack, key=lambda p: p.t)
+    packets = sorted(bg + attack, key=lambda p: p.t)
     return win, featurize(packets), packets
 
 
@@ -81,64 +90,88 @@ def main():
     parser.add_argument("--output", default="results/eval.json", help="Path to save evaluation JSON")
     parser.add_argument("--device", default="cpu", help="Compute device ('cpu' or 'cuda')")
     parser.add_argument("--retrain", action="store_true", help="Force retraining baseline model")
+    parser.add_argument("--dataset", choices=["real", "synthetic"], default="real", help="Dataset source: 'real' (CIC-IDS/Tranco/NPPAD) or 'synthetic'")
     args = parser.parse_args()
 
     torch.manual_seed(0)
 
-    print("[1/5] multi-regime benign corpus (telemetry + web_sync)...")
-    train_tel = featurize(telemetry_stream(duration_s=TRAIN_S, seed=0))
-    train_sync = featurize(web_sync_stream(duration_s=TRAIN_S, seed=1))
-
-    cal_tel = trim(featurize(telemetry_stream(duration_s=N_CAL * WINDOW_S, seed=7)), N_CAL * WINDOW_S)
-    cal_sync = trim(featurize(web_sync_stream(duration_s=N_CAL * WINDOW_S, seed=8)), N_CAL * WINDOW_S)
-
-    fpr_tel = trim(featurize(telemetry_stream(duration_s=N_FPR * WINDOW_S, seed=13)), N_FPR * WINDOW_S)
-    fpr_sync = trim(featurize(web_sync_stream(duration_s=N_FPR * WINDOW_S, seed=14)), N_FPR * WINDOW_S)
+    print(f"[1/5] multi-regime benign corpus ({'Real Benchmarks: CIC-IDS + Tranco + NPPAD' if args.dataset == 'real' else 'synthetic telemetry + web_sync'})...")
+    if args.dataset == "real":
+        train_benign = featurize(real_benign_stream(duration_s=TRAIN_S, seed=0))
+        train_tel = featurize(telemetry_stream(duration_s=TRAIN_S, seed=1))
+        cal_benign = trim(featurize(real_benign_stream(duration_s=N_CAL * WINDOW_S, seed=7)), N_CAL * WINDOW_S)
+        cal_tel = trim(featurize(telemetry_stream(duration_s=N_CAL * WINDOW_S, seed=8)), N_CAL * WINDOW_S)
+        fpr_benign = trim(featurize(real_benign_stream(duration_s=N_FPR * WINDOW_S, seed=13)), N_FPR * WINDOW_S)
+        fpr_tel = trim(featurize(telemetry_stream(duration_s=N_FPR * WINDOW_S, seed=14)), N_FPR * WINDOW_S)
+        all_train = [train_benign, train_tel]
+        all_cal = [cal_benign, cal_tel]
+        all_fpr = [fpr_benign, fpr_tel]
+    else:
+        train_tel = featurize(telemetry_stream(duration_s=TRAIN_S, seed=0))
+        train_sync = featurize(web_sync_stream(duration_s=TRAIN_S, seed=1))
+        cal_tel = trim(featurize(telemetry_stream(duration_s=N_CAL * WINDOW_S, seed=7)), N_CAL * WINDOW_S)
+        cal_sync = trim(featurize(web_sync_stream(duration_s=N_CAL * WINDOW_S, seed=8)), N_CAL * WINDOW_S)
+        fpr_tel = trim(featurize(telemetry_stream(duration_s=N_FPR * WINDOW_S, seed=13)), N_FPR * WINDOW_S)
+        fpr_sync = trim(featurize(web_sync_stream(duration_s=N_FPR * WINDOW_S, seed=14)), N_FPR * WINDOW_S)
+        all_train = [train_tel, train_sync]
+        all_cal = [cal_tel, cal_sync]
+        all_fpr = [fpr_tel, fpr_sync]
 
     ckpt_path = Path(args.checkpoint)
     if ckpt_path.exists() and not args.retrain:
         print(f"[2/5] loading pre-calibrated baseline checkpoint from {ckpt_path}...")
         model = NJODE.load(str(ckpt_path), device=args.device)
         win = Windower(model, window_s=WINDOW_S)
-        win.fit_standardizer(train_tel, train_sync)
+        win.fit_standardizer(*all_train)
     else:
         print("[2/5] training + calibration on multiregime baseline...")
         model = NJODE(d_x=5, d_h=10).to(args.device)
         win = Windower(model, window_s=WINDOW_S)
-        win.fit_standardizer(train_tel, train_sync)
-        v, m, t = tensorset(win, train_tel, train_sync)
+        win.fit_standardizer(*all_train)
+        v, m, t = tensorset(win, *all_train)
         loader = torch.utils.data.DataLoader(
             torch.utils.data.TensorDataset(v, m, t), batch_size=32, shuffle=True)
         model.fit(loader, epochs=60, log_every=20, device=args.device)
-        model.calibrate([tensorset(win, cal_tel, cal_sync)], device=args.device)
+        model.calibrate([tensorset(win, *all_cal)], device=args.device)
         if not ckpt_path.parent.exists():
             ckpt_path.parent.mkdir(parents=True, exist_ok=True)
         model.save(str(ckpt_path))
 
     print("[3/5] benign test windows (FPR)...")
-    v_f, m_f, t_f = tensorset(win, fpr_tel, fpr_sync)
+    v_f, m_f, t_f = tensorset(win, *all_fpr)
     s_b, f_b = model.compute_anomaly_scores(v_f, m_f, t_f)
     fpr = f_b.any(dim=1).float().mean().item()
     peak_benign = _peak_scores(s_b)
 
-    attacks = {
-        "c2_beacon": (c2_beacon_stream, ("c2_beacon", "beacon/recon", "tunnel/encrypted-c2")),
-        "exfil_burst": (exfil_burst_stream, ("exfil_burst", "exfil-flood")),
-        "dga_tunnel": (dga_tunnel_stream, ("dga_tunnel", "tunnel/encrypted-c2")),
-        "ddos_flood": (ddos_flood_stream, ("ddos_flood", "volumetric-ddos", "exfil-flood")),
-        "tls_c2": (tls_c2_stream, ("tls_c2", "c2_beacon", "beacon/recon")),
-        "portscan": (portscan_stream, ("portscan", "beacon/recon", "exfil-flood")),
-    }
+    if args.dataset == "real":
+        attacks = {
+            "c2_beacon": (real_c2_beacon_stream, ("c2_beacon", "beacon/recon", "tunnel/encrypted-c2")),
+            "exfil_burst": (real_exfil_stream, ("exfil_burst", "exfil-flood")),
+            "dga_tunnel": (real_dga_tunnel_stream, ("dga_tunnel", "tunnel/encrypted-c2")),
+            "ddos_flood": (real_ddos_stream, ("ddos_flood", "volumetric-ddos", "exfil-flood")),
+            "tls_c2": (real_tls_c2_stream, ("tls_c2", "c2_beacon", "beacon/recon")),
+            "portscan": (real_portscan_stream, ("portscan", "beacon/recon", "exfil-flood")),
+        }
+    else:
+        attacks = {
+            "c2_beacon": (c2_beacon_stream, ("c2_beacon", "beacon/recon", "tunnel/encrypted-c2")),
+            "exfil_burst": (exfil_burst_stream, ("exfil_burst", "exfil-flood")),
+            "dga_tunnel": (dga_tunnel_stream, ("dga_tunnel", "tunnel/encrypted-c2")),
+            "ddos_flood": (ddos_flood_stream, ("ddos_flood", "volumetric-ddos", "exfil-flood")),
+            "tls_c2": (tls_c2_stream, ("tls_c2", "c2_beacon", "beacon/recon")),
+            "portscan": (portscan_stream, ("portscan", "beacon/recon", "exfil-flood")),
+        }
 
 
     print("[4/5] attack windows & channel attribution...")
     feeder = LiveFeeder(model, window_s=WINDOW_S, stride_s=2.0)
     rows = {}
+    benign_fn = real_benign_stream if args.dataset == "real" else telemetry_stream
     for name, (fn, exp_threat) in attacks.items():
         exp_tuple = exp_threat if isinstance(exp_threat, tuple) else (exp_threat,)
         peaks, det, n_flag, n_obs, correct_attr = [], 0, 0, 0, 0
         for i in range(N_ATTACK):
-            _, stream, pkts = mixed_window_stream(win, 1000 + i, fn, 2000 + i)
+            _, stream, pkts = mixed_window_stream(win, 1000 + i, fn, 2000 + i, benign_fn=benign_fn)
             v_a, m_a, t_a = tensorset(win, stream)
             s, f = model.compute_anomaly_scores(v_a, m_a, t_a)
             p_score = _peak_scores(s)[0].item()

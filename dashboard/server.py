@@ -537,8 +537,32 @@ async def api_scada_reset(request: Request) -> JSONResponse:
 
 
 async def api_usb_status(request: Request) -> JSONResponse:
-    port = int(request.query_params.get("port", 8000))
+    port = int(request.query_params.get("port", 8501))
     return JSONResponse(get_usb_status(preferred_port=port))
+
+
+async def api_phone_launch_scanner(request: Request) -> JSONResponse:
+    port = int(request.query_params.get("port", 8501))
+    adb_path = shutil.which("adb")
+    if not adb_path:
+        return JSONResponse({"status": "error", "message": "adb not found on system PATH"}, status_code=400)
+    try:
+        url = f"http://localhost:{port}/scan"
+        subprocess.run([adb_path, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url], timeout=3, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return JSONResponse({"status": "ok", "message": f"Launched {url} on phone via ADB!"})
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+
+async def api_phone_launch_cam(request: Request) -> JSONResponse:
+    scrcpy_path = shutil.which("scrcpy")
+    if not scrcpy_path:
+        return JSONResponse({"status": "error", "message": "scrcpy not found on system PATH"}, status_code=400)
+    try:
+        subprocess.Popen([scrcpy_path, "--video-source=camera", "--camera-id=0", "--camera-fps=30", "--window-title=CHRONOS Phone Camera Feed"])
+        return JSONResponse({"status": "ok", "message": "Started scrcpy phone camera stream window!"})
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 
 async def poll_scada_background():
@@ -603,6 +627,8 @@ routes = [
     Route("/api/nuclear/status", api_nuclear_status, methods=["GET"]),
     Route("/api/scada/trip", api_scada_trip, methods=["GET", "POST"]),
     Route("/api/scada/reset", api_scada_reset, methods=["GET", "POST"]),
+    Route("/api/phone/launch_scanner", api_phone_launch_scanner, methods=["GET", "POST"]),
+    Route("/api/phone/launch_cam", api_phone_launch_cam, methods=["GET", "POST"]),
 ]
 
 # Mount static dist assets and SPA fallback

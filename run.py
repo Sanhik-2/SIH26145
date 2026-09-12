@@ -52,6 +52,7 @@ def main():
         print("  btop             Launch Real-Time SCADA Terminal Resource Monitor (cgroups HUD)")
         print("  nuclear-soc      Launch Air-Gapped Nuclear SCADA SOC Defense Console")
         print("  usb              Launch Physical USB Wire Cable Bridge (Type-A to C / Type-C to C)")
+        print("  phone-cam        Stream Phone Camera to /dev/video0 via scrcpy (Fedora Linux)")
         print("  real-packet      Launch Real Packet Network Automation Engine (Optical QR Mesh)")
         print("  test             Run unit and integration test suite (pytest)")
         print("\nExamples:")
@@ -121,6 +122,19 @@ def main():
     elif cmd in ("usb", "wire", "cable"):
         usb_script = REPO_ROOT / "diode" / "usb_bridge.py"
         subprocess.run([sys.executable, str(usb_script)] + extra_args)
+
+    elif cmd in ("phone-cam", "phone_cam", "phonecam", "scrcpy-cam", "scrcpy"):
+        cmd_args = [
+            "scrcpy",
+            "--video-source=camera",
+            "--camera-id=0",
+            "--camera-fps=30",
+            "--camera-size=1280x720",
+            "--v4l2-sink=/dev/video0",
+            "--no-playback"
+        ]
+        print("Starting scrcpy phone camera stream to /dev/video0 (Fedora Linux)...")
+        subprocess.run(cmd_args + extra_args)
 
     elif cmd in ("test", "tests", "pytest"):
         subprocess.run([sys.executable, "-m", "pytest", "tests/", "-v"] + extra_args)

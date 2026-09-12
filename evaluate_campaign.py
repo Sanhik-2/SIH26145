@@ -40,9 +40,23 @@ from simulation.attacks.ddos_flood import ddos_flood_stream
 from simulation.attacks.dga_tunnel import dga_tunnel_stream
 from simulation.attacks.exfil_burst import exfil_burst_stream
 from simulation.attacks.portscan import portscan_stream
+from simulation.attacks.c2_beacon import c2_beacon_stream
+from simulation.attacks.ddos_flood import ddos_flood_stream
+from simulation.attacks.dga_tunnel import dga_tunnel_stream
+from simulation.attacks.exfil_burst import exfil_burst_stream
+from simulation.attacks.portscan import portscan_stream
 from simulation.attacks.tls_c2 import tls_c2_stream
 from simulation.benign.telemetry import telemetry_stream
 from simulation.benign.web_sync import web_sync_stream
+from simulation.real_dataset_sim import (
+    real_benign_stream,
+    real_c2_beacon_stream,
+    real_ddos_stream,
+    real_dga_tunnel_stream,
+    real_exfil_stream,
+    real_portscan_stream,
+    real_tls_c2_stream,
+)
 
 
 ATTACK_FACTORIES = {
@@ -54,6 +68,14 @@ ATTACK_FACTORIES = {
     "portscan": lambda dur, seed, t0: portscan_stream(duration_s=dur, seed=seed, t0=t0, scan_rate=60.0),
 }
 
+REAL_ATTACK_FACTORIES = {
+    "c2_beacon": lambda dur, seed, t0: real_c2_beacon_stream(duration_s=dur, seed=seed, t0=t0),
+    "exfil_burst": lambda dur, seed, t0: real_exfil_stream(duration_s=dur, seed=seed, t0=t0),
+    "dga_tunnel": lambda dur, seed, t0: real_dga_tunnel_stream(duration_s=dur, seed=seed, t0=t0),
+    "ddos_flood": lambda dur, seed, t0: real_ddos_stream(duration_s=dur, seed=seed, t0=t0),
+    "tls_c2": lambda dur, seed, t0: real_tls_c2_stream(duration_s=dur, seed=seed, t0=t0),
+    "portscan": lambda dur, seed, t0: real_portscan_stream(duration_s=dur, seed=seed, t0=t0),
+}
 
 
 def build_continuous_campaign(
@@ -63,6 +85,7 @@ def build_continuous_campaign(
     t_phase2: float = 60.0,
     t_phase3: float = 120.0,
     t_phase4: float = 60.0,
+    use_real: bool = True,
 ) -> Tuple[List[Packet], Dict]:
     """Construct a single chronological packet stream traversing all 4 phases."""
     p1_end = t_phase1
@@ -70,20 +93,26 @@ def build_continuous_campaign(
     p3_end = p2_end + t_phase3
     p4_end = p3_end + t_phase4
 
-    # Phase 1: Baseline Calm Telemetry
-    p1_pkts = telemetry_stream(duration_s=t_phase1, seed=seed, t0=0.0)
-
-    # Phase 2: Benign Regime Shift to Web Sync
-    p2_pkts = web_sync_stream(duration_s=t_phase2, seed=seed + 1, t0=p1_end)
-
-    # Phase 3: Sustained Attack Injection (attack concurrent with background telemetry)
-    p3_bg = telemetry_stream(duration_s=t_phase3, seed=seed + 2, t0=p2_end)
-    factory = ATTACK_FACTORIES[attack_name]
-    p3_atk = factory(t_phase3, seed + 3, p2_end)
-    p3_pkts = sorted(p3_bg + p3_atk, key=lambda p: p.t)
-
-    # Phase 4: Attack Cessation & Recovery (Calm Telemetry)
-    p4_pkts = telemetry_stream(duration_s=t_phase4, seed=seed + 4, t0=p3_end)
+    if use_real:
+        p1_pkts = real_benign_stream(duration_s=t_phase1, seed=seed, t0=0.0)
+        p2_pkts = web_sync_stream(duration_s=t_phase2, seed=seed + 1, t0=p1_end)
+        p3_bg = real_benign_stream(duration_s=t_phase3, seed=seed + 2, t0=p2_end)
+        factory = REAL_ATTACK_FACTORIES.get(attack_name, ATTACK_FACTORIES[attack_name])
+        p3_atk = factory(t_phase3, seed + 3, p2_end)
+        p3_pkts = sorted(p3_bg + p3_atk, key=lambda p: p.t)
+        p4_pkts = real_benign_stream(duration_s=t_phase4, seed=seed + 4, t0=p3_end)
+    else:
+        # Phase 1: Baseline Calm Telemetry
+        p1_pkts = telemetry_stream(duration_s=t_phase1, seed=seed, t0=0.0)
+        # Phase 2: Benign Regime Shift to Web Sync
+        p2_pkts = web_sync_stream(duration_s=t_phase2, seed=seed + 1, t0=p1_end)
+        # Phase 3: Sustained Attack Injection (attack concurrent with background telemetry)
+        p3_bg = telemetry_stream(duration_s=t_phase3, seed=seed + 2, t0=p2_end)
+        factory = ATTACK_FACTORIES[attack_name]
+        p3_atk = factory(t_phase3, seed + 3, p2_end)
+        p3_pkts = sorted(p3_bg + p3_atk, key=lambda p: p.t)
+        # Phase 4: Attack Cessation & Recovery (Calm Telemetry)
+        p4_pkts = telemetry_stream(duration_s=t_phase4, seed=seed + 4, t0=p3_end)
 
     all_pkts = p1_pkts + p2_pkts + p3_pkts + p4_pkts
 

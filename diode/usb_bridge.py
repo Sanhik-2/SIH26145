@@ -77,9 +77,10 @@ def check_adb_status() -> Dict[str, Any]:
     reversed_ok = False
     if devices:
         try:
-            # Forward port 8000, 8501, 5173 from phone to laptop over USB wire
+            # Forward ports 8000, 8501, 8443, 5173 from phone to laptop over USB wire
             subprocess.run([adb_path, "reverse", "tcp:8000", "tcp:8000"], timeout=2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run([adb_path, "reverse", "tcp:8501", "tcp:8501"], timeout=2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run([adb_path, "reverse", "tcp:8443", "tcp:8443"], timeout=2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run([adb_path, "reverse", "tcp:5173", "tcp:5173"], timeout=2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             reversed_ok = True
         except Exception:
@@ -93,7 +94,7 @@ def check_adb_status() -> Dict[str, Any]:
     }
 
 
-def get_usb_status(preferred_port: int = 8000) -> Dict[str, Any]:
+def get_usb_status(preferred_port: int = 8501) -> Dict[str, Any]:
     """
     Returns complete physical wire connection status for the React dashboard
     and mobile phone QR scanner.

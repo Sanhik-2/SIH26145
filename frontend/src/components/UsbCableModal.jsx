@@ -22,7 +22,7 @@ export default function UsbCableModal({ isOpen, onClose, usbStatus, onRefresh })
   if (!isOpen) return null;
 
   const isConnected = usbStatus?.status === 'connected';
-  const phoneUrl = usbStatus?.phone_access_url || 'http://localhost:8000/scan';
+  const phoneUrl = usbStatus?.phone_access_url || 'http://localhost:8501/scan';
 
   const handleCopyUrl = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
