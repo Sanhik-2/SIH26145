@@ -124,17 +124,33 @@ def main():
         subprocess.run([sys.executable, str(usb_script)] + extra_args)
 
     elif cmd in ("phone-cam", "phone_cam", "phonecam", "scrcpy-cam", "scrcpy"):
+        preview = any(arg in extra_args for arg in ("--preview", "--view", "--gui", "-p"))
+        clean_extra = [arg for arg in extra_args if arg not in ("--preview", "--view", "--gui", "-p")]
+        icon_dir = str(REPO_ROOT / "diode" / "assets" / "icons")
+        env = os.environ.copy()
+        env["SCRCPY_ICON_DIR"] = icon_dir
+
         cmd_args = [
             "scrcpy",
             "--video-source=camera",
             "--camera-id=0",
             "--camera-fps=30",
             "--camera-size=1280x720",
+            "--no-audio",
             "--v4l2-sink=/dev/video0",
-            "--no-playback"
         ]
-        print("Starting scrcpy phone camera stream to /dev/video0 (Fedora Linux)...")
-        subprocess.run(cmd_args + extra_args)
+        if preview:
+            cmd_args.extend([
+                "--window-title=CHRONOS // Optical Diode Air-Gap Ingress",
+                "--window-width=480",
+                "--window-height=640",
+            ])
+            print("Starting CHRONOS optical camera stream with live HUD preview window...")
+        else:
+            cmd_args.append("--no-window")
+            print("Starting silent background camera stream to /dev/video0 (Zero UI Popups)...")
+
+        subprocess.run(cmd_args + clean_extra, env=env)
 
     elif cmd in ("test", "tests", "pytest"):
         subprocess.run([sys.executable, "-m", "pytest", "tests/", "-v"] + extra_args)

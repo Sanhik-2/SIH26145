@@ -559,8 +559,19 @@ async def api_phone_launch_cam(request: Request) -> JSONResponse:
     if not scrcpy_path:
         return JSONResponse({"status": "error", "message": "scrcpy not found on system PATH"}, status_code=400)
     try:
-        subprocess.Popen([scrcpy_path, "--video-source=camera", "--camera-id=0", "--camera-fps=30", "--window-title=CHRONOS Phone Camera Feed"])
-        return JSONResponse({"status": "ok", "message": "Started scrcpy phone camera stream window!"})
+        env = os.environ.copy()
+        env["SCRCPY_ICON_DIR"] = str(REPO_ROOT / "diode" / "assets" / "icons")
+        subprocess.Popen([
+            scrcpy_path,
+            "--video-source=camera",
+            "--camera-id=0",
+            "--camera-fps=30",
+            "--camera-size=1280x720",
+            "--no-audio",
+            "--window-title=CHRONOS // Optical Diode Air-Gap Ingress",
+            "--v4l2-sink=/dev/video0"
+        ], env=env)
+        return JSONResponse({"status": "ok", "message": "Started CHRONOS phone camera stream!"})
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
